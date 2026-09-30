@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useMemo, useState } from 'react';
 
 import { useStyles2, Icon } from '@grafana/ui';
 import { getStyles } from './LlmSpanDetail.styles';
-import { KeyValuePair, SpanLog, LlmMessage, LlmSpanData, LlmTokenUsage, LlmInvocationParams, extractLlmSpanData, getSpanKindColor, getSpanKind, isOpenInferenceSpan, decodeUnicodeEscapes } from '../utils/llmUtils';
+import { KeyValuePair, SpanLog, LlmMessage, LlmSpanData, LlmTokenUsage, LlmInvocationParams, extractLlmSpanData, getSpanKindColor, getSpanKind, decodeUnicodeEscapes } from '../utils/llmUtils';
 import { estimateCost, formatCost } from '../utils/costUtils';
 
 // gpt-tokenizer uses cl100k_base (GPT-4 / GPT-3.5 encoding) for token counting
@@ -89,9 +89,7 @@ function getRoleIcon(role: string): 'user' | 'comment-alt' | 'cog' | 'code-branc
 
 function getConventionLabel(convention: string): string {
   switch (convention) {
-    case 'openinference': return 'OpenInference';
     case 'otel-genai': return 'OTel GenAI';
-    case 'vertex': return 'Vertex / ADK';
     case 'generic': return 'Generic';
     default: return convention;
   }
@@ -349,26 +347,29 @@ function getAttrValue(tags: KeyValuePair[], key: string): string | undefined {
   return tag !== undefined ? decodeUnicodeEscapes(String(tag.value)) : undefined;
 }
 
-function OpenInferenceSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: string }) {
+function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: string }) {
   const styles = useStyles2(getStyles);
   const kind = spanKind.toUpperCase();
   const kindColor = getSpanKindColor(spanKind);
 
-  const inputValue = getAttrValue(tags, 'input.value');
-  const outputValue = getAttrValue(tags, 'output.value');
-  const toolName = getAttrValue(tags, 'tool.name');
-  const toolDesc = getAttrValue(tags, 'tool.description');
-  const toolParams = getAttrValue(tags, 'tool.parameters');
-  const retrieralDocs = kind === 'RETRIEVER' ? extractRetrievalDocuments(tags) : [];
+  // OTel GenAI attributes for TOOL spans
+  const toolName = getAttrValue(tags, 'gen_ai.tool.name');
+  const toolDesc = getAttrValue(tags, 'gen_ai.tool.description');
+  const toolCallArgs = getAttrValue(tags, 'gen_ai.tool.call.arguments');
+  const toolCallResult = getAttrValue(tags, 'gen_ai.tool.call.result');
 
-  // RERANKER attributes (BUG-005)
-  const rerankerQuery = getAttrValue(tags, 'reranker.query');
-  const rerankerModel = getAttrValue(tags, 'reranker.model_name');
+  // OTel GenAI attributes for RETRIEVER spans
+  const retrievalQuery = getAttrValue(tags, 'gen_ai.retrieval.query.text');
+  const retrievalDocs = kind === 'RETRIEVER' ? extractRetrievalDocuments(tags) : [];
+
+  // OTel GenAI attributes for RERANKER spans (custom attributes, not in OTel spec yet)
+  const rerankerQuery = getAttrValue(tags, 'gen_ai.reranker.query');
+  const rerankerModel = getAttrValue(tags, 'gen_ai.reranker.model');
   const rerankerResults = (() => {
     const results: Array<{ index: number; document?: string; score?: string; relevanceScore?: string }> = [];
     const map = new Map<number, (typeof results)[0]>();
     for (const tag of tags) {
-      const m = tag.key.match(/^reranker\.results\.(\d+)\.(.+)$/);
+      const m = tag.key.match(/^gen_ai\.reranker\.results\.(\d+)\.(.+)$/);
       if (!m) { continue; }
       const idx = parseInt(m[1], 10);
       if (!map.has(idx)) { map.set(idx, { index: idx }); }
@@ -382,22 +383,25 @@ function OpenInferenceSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spa
     return results.sort((a, b) => a.index - b.index);
   })();
 
+  // Generic input/output for CHAIN, AGENT, EMBEDDING, UNKNOWN spans
+  const inputValue = getAttrValue(tags, 'gen_ai.input.messages') || getAttrValue(tags, 'input.value');
+  const outputValue = getAttrValue(tags, 'gen_ai.output.messages') || getAttrValue(tags, 'output.value');
+
   return (
-    <div className={styles.container} data-testid="oi-span-detail">
+    <div className={styles.container} data-testid="genai-span-detail">
       <div className={styles.headerRow}>
-        <span className={styles.kindBadge} style={{ background: kindColor }} data-testid="oi-span-kind">
+        <span className={styles.kindBadge} style={{ background: kindColor }} data-testid="genai-span-kind">
           {kind}
         </span>
-        <span className={styles.conventionBadge}>OpenInference</span>
+        <span className={styles.conventionBadge}>OTel GenAI</span>
       </div>
 
-      {kind === 'TOOL' && (toolName || toolDesc || toolParams || inputValue || outputValue) && (
+      {kind === 'TOOL' && (toolName || toolDesc || toolCallArgs || toolCallResult) && (
         <CollapsibleSection title="Tool" testId="tool-section">
           {toolName && <ValueBlock label="Tool Name" value={toolName} />}
           {toolDesc && <ValueBlock label="Description" value={toolDesc} />}
-          {toolParams && <ValueBlock label="Parameters" value={toolParams} />}
-          {inputValue && <ValueBlock label="Input" value={inputValue} />}
-          {outputValue && <ValueBlock label="Output" value={outputValue} />}
+          {toolCallArgs && <ValueBlock label="Call Arguments" value={toolCallArgs} />}
+          {toolCallResult && <ValueBlock label="Call Result" value={toolCallResult} />}
         </CollapsibleSection>
       )}
 
@@ -423,13 +427,13 @@ function OpenInferenceSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spa
         </CollapsibleSection>
       )}
 
-      {kind === 'RETRIEVER' && (inputValue || retrieralDocs.length > 0) && (
+      {kind === 'RETRIEVER' && (retrievalQuery || retrievalDocs.length > 0) && (
         <CollapsibleSection title="Retrieval" testId="retriever-section">
-          {inputValue && <ValueBlock label="Query" value={inputValue} />}
-          {retrieralDocs.length > 0 && (
+          {retrievalQuery && <ValueBlock label="Query" value={retrievalQuery} />}
+          {retrievalDocs.length > 0 && (
             <div className={styles.fieldBlock}>
-              <div className={styles.fieldLabel}>Documents ({retrieralDocs.length})</div>
-              {retrieralDocs.map((doc) => (
+              <div className={styles.fieldLabel}>Documents ({retrievalDocs.length})</div>
+              {retrievalDocs.map((doc) => (
                 <div key={doc.index} className={styles.documentBlock}>
                   <div className={styles.documentMeta}>
                     #{doc.index}{doc.id ? ` · id: ${doc.id}` : ''}{doc.score !== undefined ? ` · score: ${doc.score}` : ''}
@@ -464,13 +468,13 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
   const llmData: LlmSpanData = useMemo(() => extractLlmSpanData(tags, logs, operationName), [tags, logs, operationName]);
 
   if (!llmData.isLlm) {
-    // For non-LLM OpenInference spans (CHAIN, TOOL, RETRIEVER, AGENT, RERANKER, UNKNOWN),
+    // For non-LLM OTel GenAI spans (CHAIN, TOOL, RETRIEVER, AGENT, RERANKER, UNKNOWN),
     // show a structured detail panel with their relevant attributes.
     // EMBEDDING spans are routed through the LLM detail path so model/token/cost data is shown (BUG-022).
-    if (isOpenInferenceSpan(tags) && llmData.spanKind && llmData.spanKind.toUpperCase() !== 'EMBEDDING') {
-      return <OpenInferenceSpanDetail tags={tags} spanKind={llmData.spanKind} />;
+    if (llmData.convention === 'otel-genai' && llmData.spanKind && llmData.spanKind.toUpperCase() !== 'EMBEDDING') {
+      return <GenAiSpanDetail tags={tags} spanKind={llmData.spanKind} />;
     }
-    if (!isOpenInferenceSpan(tags) || (llmData.spanKind && llmData.spanKind.toUpperCase() !== 'EMBEDDING')) {
+    if (llmData.convention !== 'otel-genai' || (llmData.spanKind && llmData.spanKind.toUpperCase() !== 'EMBEDDING')) {
       return null;
     }
   }
@@ -500,6 +504,62 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
         {llmData.system && <span className={styles.conventionBadge}>{llmData.system}</span>}
         {llmData.finishReason && <FinishReasonBadge reason={llmData.finishReason} />}
       </div>
+
+      {/* Agent / Provider / Conversation metadata (OTel GenAI) */}
+      {llmData.agentName || llmData.agentId || llmData.agentVersion || llmData.provider || llmData.conversationId || llmData.responseId ? (
+        <CollapsibleSection title="Agent & Conversation" testId="agent-section">
+          <div className={styles.paramsGrid}>
+            {llmData.agentName && (
+              <div className={styles.paramItem}>
+                <span className={styles.paramKey}>Agent:</span>
+                <span className={styles.paramValue}>{llmData.agentName}</span>
+              </div>
+            )}
+            {llmData.agentId && (
+              <div className={styles.paramItem}>
+                <span className={styles.paramKey}>Agent ID:</span>
+                <span className={styles.paramValue}>{llmData.agentId}</span>
+              </div>
+            )}
+            {llmData.agentVersion && (
+              <div className={styles.paramItem}>
+                <span className={styles.paramKey}>Agent Version:</span>
+                <span className={styles.paramValue}>{llmData.agentVersion}</span>
+              </div>
+            )}
+            {llmData.provider && (
+              <div className={styles.paramItem}>
+                <span className={styles.paramKey}>Provider:</span>
+                <span className={styles.paramValue}>{llmData.provider}</span>
+              </div>
+            )}
+            {llmData.conversationId && (
+              <div className={styles.paramItem}>
+                <span className={styles.paramKey}>Conversation:</span>
+                <span className={styles.paramValue}>{llmData.conversationId}</span>
+              </div>
+            )}
+            {llmData.responseId && (
+              <div className={styles.paramItem}>
+                <span className={styles.paramKey}>Response ID:</span>
+                <span className={styles.paramValue}>{llmData.responseId}</span>
+              </div>
+            )}
+          </div>
+        </CollapsibleSection>
+      ) : null}
+
+      {/* System instructions (OTel GenAI structured format) */}
+      {llmData.systemInstructions && llmData.systemInstructions.length > 0 ? (
+        <CollapsibleSection title="System Instructions" testId="system-instructions-section">
+          {llmData.systemInstructions.map((instr, i) => (
+            <div key={i} className={styles.fieldBlock}>
+              <div className={styles.fieldLabel}>Instruction {i + 1}</div>
+              <div className={styles.valueBlock}>{instr}</div>
+            </div>
+          ))}
+        </CollapsibleSection>
+      ) : null}
 
       {llmData.inputMessages.length > 0 && (
         <CollapsibleSection

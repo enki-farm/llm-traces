@@ -1,5 +1,5 @@
 // Ported from public/app/features/explore/TraceView/components/TraceTimelineViewer/SpanDetail/llmUtils.ts
-// Extracts LLM span data from OpenInference / OTel GenAI / Vertex AI / generic conventions.
+// Extracts LLM span data from OTel GenAI / generic conventions.
 
 export interface KeyValuePair {
   key: string;
@@ -37,19 +37,26 @@ export interface LlmInvocationParams {
   [key: string]: unknown;
 }
 
-export type LlmConvention = 'openinference' | 'otel-genai' | 'vertex' | 'generic' | 'unknown';
+export type LlmConvention = 'otel-genai' | 'generic' | 'unknown';
 
 export interface LlmSpanData {
   isLlm: boolean;
   convention: LlmConvention;
-  spanKind?: string; // openinference.span.kind value: LLM, CHAIN, RETRIEVER, TOOL, EMBEDDING, AGENT
+  spanKind?: string; // gen_ai.operation.name mapped to: LLM, CHAIN, RETRIEVER, TOOL, EMBEDDING, AGENT, RERANKER, GUARDRAIL
   model: string;
+  agentName?: string; // gen_ai.agent.name (OTel GenAI)
+  agentId?: string;   // gen_ai.agent.id (OTel GenAI)
+  agentVersion?: string; // gen_ai.agent.version (OTel GenAI)
+  provider?: string;  // gen_ai.provider.name (OTel GenAI)
+  conversationId?: string; // gen_ai.conversation.id (OTel GenAI)
   system?: string;
+  systemInstructions?: string[]; // gen_ai.system_instructions (OTel GenAI, structured)
   inputMessages: LlmMessage[];
   outputMessages: LlmMessage[];
   tokenUsage: LlmTokenUsage;
   invocationParams: LlmInvocationParams;
   finishReason?: string;
+  responseId?: string; // gen_ai.response.id (OTel GenAI)
   precomputedCostUsd?: number;
 }
 
@@ -118,34 +125,113 @@ function normalizeToolCalls(raw: unknown): LlmToolCall[] | undefined {
   });
 }
 
+/**
+ * Extract content string from an OTel GenAI-style parts array.
+ *
+ * The current OTel GenAI semantic convention represents message content as:
+ *   [{"role":"user","parts":[{"type":"text","content":"..."}]}]
+ *
+ * This function flattens the parts array into a single content string,
+ * preserving tool calls and tool results as structured markers.
+ */
+function extractContentFromParts(parts: unknown[]): string {
+  if (!Array.isArray(parts)) {
+    return '';
+  }
+  const textParts: string[] = [];
+  for (const part of parts) {
+    if (!isRecord(part)) {
+      continue;
+    }
+    const type = String(part.type ?? 'text');
+    if (type === 'text') {
+      const text = String(part.content ?? '');
+      if (text) {
+        textParts.push(text);
+      }
+    } else if (type === 'tool_call') {
+      const name = String(part.name ?? 'unknown');
+      const id = part.id ? String(part.id) : undefined;
+      const args = part.arguments ? JSON.stringify(part.arguments) : '';
+      textParts.push(`[Tool Call: ${name}${id ? ` (${id})` : ''}]`);
+      if (args) {
+        textParts.push(args);
+      }
+    } else if (type === 'tool_result' || type === 'function_response') {
+      const toolCallId = part.tool_call_id || part.call_id || '';
+      const content = part.content !== undefined ? String(part.content) : '';
+      textParts.push(`[Tool Result: ${toolCallId}]`);
+      if (content) {
+        textParts.push(content);
+      }
+    } else {
+      // Unknown part type — serialize it
+      textParts.push(JSON.stringify(part));
+    }
+  }
+  return textParts.join('\n');
+}
+
 function extractMessagesFromJsonValue(value: string): LlmMessage[] {
   try {
     const parsed = JSON.parse(value);
     if (Array.isArray(parsed)) {
       return parsed
         .filter((m) => m && typeof m === 'object' && (m.role || m['message.role']))
-        .map((m: Record<string, unknown>) => ({
-          role: String(m.role || m['message.role'] || 'unknown'),
-          content: String(m.content ?? m['message.content'] ?? m.text ?? ''),
-          toolCalls: normalizeToolCalls(m.tool_calls),
-        }));
+        .map((m: Record<string, unknown>) => {
+          // OTel GenAI parts-based format: {"role":"user","parts":[...]}
+          if (Array.isArray(m.parts)) {
+            return {
+              role: String(m.role || m['message.role'] || 'unknown'),
+              content: extractContentFromParts(m.parts),
+              toolCalls: normalizeToolCalls(m.tool_calls),
+            };
+          }
+          // Legacy flat format: {"role":"user","content":"..."}
+          return {
+            role: String(m.role || m['message.role'] || 'unknown'),
+            content: String(m.content ?? m['message.content'] ?? m.text ?? ''),
+            toolCalls: normalizeToolCalls(m.tool_calls),
+          };
+        });
     }
     if (typeof parsed === 'object' && parsed !== null) {
       const messagesField = (parsed as Record<string, unknown>).messages || (parsed as Record<string, unknown>).Messages || (parsed as Record<string, unknown>).prompt;
       if (Array.isArray(messagesField)) {
         return messagesField
           .filter((m: Record<string, unknown>) => m && typeof m === 'object' && (m.role || m['message.role']))
-          .map((m: Record<string, unknown>) => ({
-            role: String(m.role || m['message.role'] || 'unknown'),
-            content: String(m.content ?? m['message.content'] ?? m.text ?? ''),
-            toolCalls: normalizeToolCalls(m.tool_calls),
-          }));
+          .map((m: Record<string, unknown>) => {
+            // OTel GenAI parts-based format
+            if (Array.isArray(m.parts)) {
+              return {
+                role: String(m.role || m['message.role'] || 'unknown'),
+                content: extractContentFromParts(m.parts),
+                toolCalls: normalizeToolCalls(m.tool_calls),
+              };
+            }
+            // Legacy flat format
+            return {
+              role: String(m.role || m['message.role'] || 'unknown'),
+              content: String(m.content ?? m['message.content'] ?? m.text ?? ''),
+              toolCalls: normalizeToolCalls(m.tool_calls),
+            };
+          });
       }
       if ((parsed as Record<string, unknown>).role) {
+        const msg = parsed as Record<string, unknown>;
+        // OTel GenAI parts-based format
+        if (Array.isArray(msg.parts)) {
+          return [{
+            role: String(msg.role),
+            content: extractContentFromParts(msg.parts),
+            toolCalls: normalizeToolCalls(msg.tool_calls),
+          }];
+        }
+        // Legacy flat format
         return [{
-          role: String((parsed as Record<string, unknown>).role),
-          content: String((parsed as Record<string, unknown>).content ?? (parsed as Record<string, unknown>).text ?? ''),
-          toolCalls: normalizeToolCalls((parsed as Record<string, unknown>).tool_calls),
+          role: String(msg.role),
+          content: String(msg.content ?? msg.text ?? ''),
+          toolCalls: normalizeToolCalls(msg.tool_calls),
         }];
       }
     }
@@ -344,25 +430,7 @@ function extractGcpVertexResponseMessages(jsonBlob: string): LlmMessage[] {
 }
 
 function detectConvention(tags: KeyValuePair[]): LlmConvention | null {
-  const oiKind = getAttr(tags, 'openinference.span.kind');
-  if (oiKind) {
-    return 'openinference';
-  }
   const genAiSystem = getAttr(tags, 'gen_ai.system');
-  if (genAiSystem && (genAiSystem.includes('vertex') || genAiSystem.includes('gcp'))) {
-    return 'vertex';
-  }
-  // Only classify as openinference when gen_ai.system is absent — if it's present the span
-  // follows OTel GenAI convention even if it also carries llm.request.type (Traceloop compat).
-  if (!genAiSystem && tags.some((t) => t.key === 'llm.model_name' || t.key === 'llm.request.type' || t.key.startsWith('llm.input_messages.') || t.key.startsWith('llm.output_messages.'))) {
-    return 'openinference';
-  }
-  if (tags.some((t) => t.key.startsWith('llm.prompts.') || t.key.startsWith('llm.completions.'))) {
-    return 'vertex';
-  }
-  if (tags.some((t) => t.key.startsWith('gcp.vertex.agent.'))) {
-    return 'vertex';
-  }
   if (genAiSystem || tags.some((t) => t.key.startsWith('gen_ai.'))) {
     return 'otel-genai';
   }
@@ -379,6 +447,37 @@ function detectConvention(tags: KeyValuePair[]): LlmConvention | null {
 function extractOpenInference(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanData, 'isLlm'> {
   const model = getAttr(tags, 'gen_ai.response.model') || getAttr(tags, 'llm.model_name') || getAttr(tags, 'gen_ai.request.model') || 'unknown';
   const spanKind = getAttr(tags, 'openinference.span.kind');
+
+  // Agent attributes (OTel GenAI spec + modern OpenInference ≥ 1.4)
+  const agentName = getAttr(tags, 'gen_ai.agent.name');
+  const agentId = getAttr(tags, 'gen_ai.agent.id');
+  const agentVersion = getAttr(tags, 'gen_ai.agent.version');
+
+  // Provider attribute (OTel GenAI spec)
+  const provider = getAttr(tags, 'gen_ai.provider.name');
+
+  // Conversation ID (OTel GenAI spec)
+  const conversationId = getAttr(tags, 'gen_ai.conversation.id');
+
+  // Response ID (OTel GenAI spec)
+  const responseId = getAttr(tags, 'gen_ai.response.id');
+
+  // System instructions — structured array format
+  let systemInstructions: string[] | undefined;
+  const sysInstrRaw = getAttr(tags, 'gen_ai.system_instructions');
+  if (sysInstrRaw) {
+    try {
+      const parsed = JSON.parse(sysInstrRaw);
+      if (Array.isArray(parsed)) {
+        systemInstructions = parsed
+          .filter((item: unknown) => isRecord(item) && item.content !== undefined)
+          .map((item: Record<string, unknown>) => String(item.content ?? ''));
+      }
+    } catch {
+      // not valid JSON — fall through to legacy gen_ai.system
+    }
+  }
+
   let inputMessages = extractIndexedMessages(tags, 'llm.input_messages.');
   if (inputMessages.length === 0) {
     inputMessages = extractIndexedMessages(tags, 'llm.prompts.');
@@ -474,6 +573,12 @@ function extractOpenInference(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSp
     convention: 'openinference',
     spanKind,
     model,
+    agentName,
+    agentId,
+    agentVersion,
+    provider,
+    conversationId,
+    systemInstructions,
     system: getAttr(tags, 'gen_ai.system') || getAttr(tags, 'llm.system'),
     inputMessages,
     outputMessages,
@@ -484,6 +589,7 @@ function extractOpenInference(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSp
     },
     invocationParams,
     finishReason,
+    ...(responseId ? { responseId } : {}),
     ...(precomputedCostUsd !== undefined ? { precomputedCostUsd } : {}),
   };
 }
@@ -492,7 +598,59 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
   // Prefer gen_ai.response.model when present — after streaming/routing the served model may differ
   // from the requested model (e.g. provider-side aliasing or fallback routing).
   const model = getAttr(tags, 'gen_ai.response.model') || getAttr(tags, 'gen_ai.request.model') || getAttr(tags, 'llm.request.model') || 'unknown';
+
+  // Agent attributes (OTel GenAI spec)
+  const agentName = getAttr(tags, 'gen_ai.agent.name');
+  const agentId = getAttr(tags, 'gen_ai.agent.id');
+  const agentVersion = getAttr(tags, 'gen_ai.agent.version');
+
+  // Provider attribute (OTel GenAI spec)
+  const provider = getAttr(tags, 'gen_ai.provider.name');
+
+  // Conversation ID (OTel GenAI spec)
+  const conversationId = getAttr(tags, 'gen_ai.conversation.id');
+
+  // Response ID (OTel GenAI spec)
+  const responseId = getAttr(tags, 'gen_ai.response.id');
+
+  // System instructions — structured array format (OTel GenAI spec)
+  // gen_ai.system_instructions is a JSON array of {type, content} objects
+  let systemInstructions: string[] | undefined;
+  const sysInstrRaw = getAttr(tags, 'gen_ai.system_instructions');
+  if (sysInstrRaw) {
+    try {
+      const parsed = JSON.parse(sysInstrRaw);
+      if (Array.isArray(parsed)) {
+        systemInstructions = parsed
+          .filter((item: unknown) => isRecord(item) && item.content !== undefined)
+          .map((item: Record<string, unknown>) => String(item.content ?? ''));
+      }
+    } catch {
+      // not valid JSON — fall through to legacy gen_ai.system
+    }
+  }
+
   const { input: inputMessages, output: outputMessages } = extractMessagesFromEvents(logs);
+
+  // ── Input messages — OTel GenAI semantic conventions ─────────────────────
+  // Priority: structured gen_ai.input.messages (dots, current spec) >
+  //   gen_ai.input_messages (underscores, legacy) >
+  //   gen_ai.prompt (Traceloop flat-indexed) >
+  //   logs/events
+  if (inputMessages.length === 0) {
+    // Current OTel spec: gen_ai.input.messages (dots, not underscores)
+    const genAiInput = getAttr(tags, 'gen_ai.input.messages');
+    if (genAiInput) {
+      inputMessages.push(...extractMessagesFromJsonValue(genAiInput));
+    }
+  }
+  if (inputMessages.length === 0) {
+    // Legacy/compat: gen_ai.input_messages (underscores)
+    const genAiInput = getAttr(tags, 'gen_ai.input_messages');
+    if (genAiInput) {
+      inputMessages.push(...extractMessagesFromJsonValue(genAiInput));
+    }
+  }
   if (inputMessages.length === 0) {
     const prompt = getAttr(tags, 'gen_ai.prompt');
     if (prompt) {
@@ -501,14 +659,24 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     }
   }
   if (inputMessages.length === 0) {
-    const genAiInput = getAttr(tags, 'gen_ai.input_messages');
-    if (genAiInput) {
-      inputMessages.push(...extractMessagesFromJsonValue(genAiInput));
-    }
-  }
-  if (inputMessages.length === 0) {
     // Traceloop flat-indexed format: gen_ai.prompt.{i}.role / gen_ai.prompt.{i}.content
     inputMessages.push(...extractIndexedMessages(tags, 'gen_ai.prompt.'));
+  }
+
+  // ── Output messages — OTel GenAI semantic conventions ─────────────────────
+  if (outputMessages.length === 0) {
+    // Current OTel spec: gen_ai.output.messages (dots, not underscores)
+    const genAiOutput = getAttr(tags, 'gen_ai.output.messages');
+    if (genAiOutput) {
+      outputMessages.push(...extractMessagesFromJsonValue(genAiOutput));
+    }
+  }
+  if (outputMessages.length === 0) {
+    // Legacy/compat: gen_ai.output_messages (underscores)
+    const genAiOutput = getAttr(tags, 'gen_ai.output_messages');
+    if (genAiOutput) {
+      outputMessages.push(...extractMessagesFromJsonValue(genAiOutput));
+    }
   }
   if (outputMessages.length === 0) {
     const completion = getAttr(tags, 'gen_ai.completion');
@@ -518,15 +686,10 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     }
   }
   if (outputMessages.length === 0) {
-    const genAiOutput = getAttr(tags, 'gen_ai.output_messages');
-    if (genAiOutput) {
-      outputMessages.push(...extractMessagesFromJsonValue(genAiOutput));
-    }
-  }
-  if (outputMessages.length === 0) {
     // Traceloop flat-indexed format: gen_ai.completion.{i}.role / gen_ai.completion.{i}.content
     outputMessages.push(...extractIndexedMessages(tags, 'gen_ai.completion.'));
   }
+
   const finishReasonsRaw = getAttr(tags, 'gen_ai.response.finish_reasons');
   let finishReasonFromArray: string | undefined;
   if (finishReasonsRaw) {
@@ -542,12 +705,22 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
   return {
     convention: 'otel-genai',
     model,
+    agentName,
+    agentId,
+    agentVersion,
+    provider,
+    conversationId,
+    systemInstructions,
     system: getAttr(tags, 'gen_ai.system'),
     inputMessages,
     outputMessages,
     tokenUsage: {
-      input: getNumAttr(tags, 'gen_ai.usage.input_tokens') ?? getNumAttr(tags, 'gen_ai.usage.prompt_tokens'),
-      output: getNumAttr(tags, 'gen_ai.usage.output_tokens') ?? getNumAttr(tags, 'gen_ai.usage.completion_tokens'),
+      input: getNumAttr(tags, 'gen_ai.usage.input_tokens')
+        ?? getNumAttr(tags, 'gen_ai.usage.prompt_tokens')
+        ?? getNumAttr(tags, 'gen_ai.usage.input'),
+      output: getNumAttr(tags, 'gen_ai.usage.output_tokens')
+        ?? getNumAttr(tags, 'gen_ai.usage.completion_tokens')
+        ?? getNumAttr(tags, 'gen_ai.usage.output'),
       total: getNumAttr(tags, 'gen_ai.usage.total_tokens'),
     },
     invocationParams: {
@@ -571,6 +744,7 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
         : {}),
     },
     finishReason,
+    ...(responseId ? { responseId } : {}),
     ...(precomputedCostUsd !== undefined ? { precomputedCostUsd } : {}),
   };
 }
@@ -634,24 +808,16 @@ export function extractLlmSpanData(tags: KeyValuePair[], logs: SpanLog[], operat
   }
   let data: Omit<LlmSpanData, 'isLlm'>;
   switch (convention) {
-    case 'openinference':
-      data = extractOpenInference(tags, logs);
-      break;
     case 'otel-genai':
       data = extractOtelGenAi(tags, logs);
-      break;
-    case 'vertex':
-      data = { ...extractOpenInference(tags, logs), convention: 'vertex' };
       break;
     default:
       data = extractGeneric(tags, logs, operationName);
   }
-  // For OpenInference, only treat the span as LLM if it's an LLM call or a GUARDRAIL
-  // (guardrails invoke an LLM internally and carry the same llm.* attributes).
+  // For OTel GenAI, only treat the span as LLM if it's an LLM call or a GUARDRAIL
+  // (guardrails invoke an LLM internally and carry the same gen_ai.* attributes).
   // CHAIN, TOOL, RETRIEVER etc. are structural spans, not the model call itself.
-  const isLlm = convention === 'openinference'
-    ? data.spanKind?.toUpperCase() === 'LLM' || data.spanKind?.toUpperCase() === 'GUARDRAIL'
-    : true;
+  const isLlm = data.spanKind?.toUpperCase() === 'LLM' || data.spanKind?.toUpperCase() === 'GUARDRAIL';
   return { isLlm, ...data };
 }
 
@@ -659,15 +825,7 @@ export function isAiSpan(tags: KeyValuePair[]): boolean {
   return detectConvention(tags) !== null;
 }
 
-export function isOpenInferenceSpan(tags: KeyValuePair[]): boolean {
-  return tags.some((t) => t.key === 'openinference.span.kind');
-}
-
 export function isEmbeddingSpan(tags: KeyValuePair[]): boolean {
-  const requestType = tags.find((t) => t.key === 'llm.request.type');
-  if (requestType) {
-    return String(requestType.value).toLowerCase().includes('embedding');
-  }
   const opName = tags.find((t) => t.key === 'gen_ai.operation.name');
   if (opName) {
     const v = String(opName.value).toLowerCase();
@@ -683,21 +841,11 @@ export function isLlmSpan(tags: KeyValuePair[]): boolean {
   if (isEmbeddingSpan(tags)) {
     return false;
   }
-  const oiKind = tags.find((t) => t.key === 'openinference.span.kind');
-  if (oiKind) {
-    const kind = String(oiKind.value).toUpperCase();
-    return kind === 'LLM' || kind === 'GUARDRAIL';
-  }
   if (tags.some(
     (t) =>
       t.key === 'gen_ai.system' ||
       t.key === 'gen_ai.request.model' ||
-      t.key === 'llm.model_name' ||
-      t.key === 'llm.request.type' ||
-      t.key.startsWith('llm.input_messages.') ||
-      t.key.startsWith('llm.prompts.') ||
-      t.key.startsWith('gen_ai.usage.') ||
-      t.key.startsWith('gcp.vertex.agent.')
+      t.key.startsWith('gen_ai.usage.')
   )) {
     return true;
   }
@@ -705,19 +853,6 @@ export function isLlmSpan(tags: KeyValuePair[]): boolean {
   return tags.some(
     (t) => (t.key.endsWith('.operation.type') || t.key === 'operation.type') && String(t.value).toLowerCase().includes('completion')
   );
-}
-
-export function isGuardrailSpan(tags: KeyValuePair[]): boolean {
-  const oiKind = tags.find((t) => t.key === 'openinference.span.kind');
-  if (oiKind && String(oiKind.value).toUpperCase() === 'GUARDRAIL') {
-    return true;
-  }
-  const opName = tags.find((t) => t.key === 'gen_ai.operation.name');
-  if (opName) {
-    const v = String(opName.value).toLowerCase();
-    if (v === 'guardrail' || v === 'check_guardrail') { return true; }
-  }
-  return false;
 }
 
 // Maps gen_ai.operation.name values (OTel GenAI spec) to normalized span kind labels.
@@ -747,32 +882,21 @@ const OTEL_OPERATION_TO_KIND: Record<string, string> = {
 
 /**
  * Returns the display span kind across all supported conventions:
- *   - OpenInference: openinference.span.kind (AGENT, LLM, CHAIN, TOOL, RETRIEVER, EMBEDDING, RERANKER)
  *   - OTel GenAI:    gen_ai.operation.name mapped to normalized labels
- *   - GCP Vertex:    derives LLM from gen_ai.operation.name or gen_ai.system presence
  * Returns undefined for non-AI spans.
  */
 export function getSpanKind(tags: KeyValuePair[]): string | undefined {
-  // OpenInference — explicit kind attribute, trust it directly
-  const oiKind = getAttr(tags, 'openinference.span.kind');
-  if (oiKind) {
-    return oiKind.toUpperCase();
-  }
-
-  // OTel GenAI / Vertex — derive kind from gen_ai.operation.name
+  // OTel GenAI — derive kind from gen_ai.operation.name
   const opName = getAttr(tags, 'gen_ai.operation.name');
   if (opName) {
     return OTEL_OPERATION_TO_KIND[opName.toLowerCase()] ?? opName.toUpperCase();
   }
 
-  // Fallback: any span with gen_ai.system, gen_ai.request.model, llm.model_name, or
-  // llm.request.type is an LLM inference span with no explicit kind — show "LLM"
+  // Fallback: any span with gen_ai.system or gen_ai.request.model is an LLM inference span
   const isInferenceSpan = tags.some(
     (t) =>
       t.key === 'gen_ai.system' ||
-      t.key === 'gen_ai.request.model' ||
-      t.key === 'llm.model_name' ||
-      t.key === 'llm.request.type'
+      t.key === 'gen_ai.request.model'
   );
   if (isInferenceSpan) {
     return 'LLM';

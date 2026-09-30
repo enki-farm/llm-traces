@@ -1,18 +1,14 @@
 import type { DataSourceApi } from '@grafana/data';
 
 // Broad filter that catches all supported LLM conventions:
-//   - OpenInference: openinference.span.kind attribute present
-//   - OTel GenAI / Vertex AI: gen_ai.system attribute present
-//   - OTel GenAI operation: gen_ai.operation.name attribute present (set by opentelemetry-instrumentation-openai
-//     and similar; may not set gen_ai.system when system is not yet known at instrumentation time)
-//   - OpenInference fallback: llm.model_name attribute present
-//   - GenAI request type: llm.request.type attribute present (Traceloop convention)
+//   - OTel GenAI: gen_ai.system or gen_ai.operation.name attribute present
+//   - Generic: operation.type containing "completion"
 //
 // The bare disjunction — used for standalone queries so the Prism TraceQL grammar
 // can tokenize attribute names correctly (its filter pattern requires the first char
 // inside {} to be an attribute name, not a parenthesis).
 export const LLM_FILTER_CONDITIONS =
-  'span.openinference.span.kind != "" || span.gen_ai.system != "" || span.gen_ai.operation.name != "" || span.llm.model_name != "" || span.llm.request.type != ""';
+  'span.gen_ai.system != "" || span.gen_ai.operation.name != ""';
 
 // BUG-040: grouped form, used only when &&-ing with a user condition so operator
 // precedence is correct: (A||B||C||D||E) && user_condition

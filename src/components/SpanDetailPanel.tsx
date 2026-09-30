@@ -82,7 +82,7 @@ export function SpanDetailPanel({ span }: SpanDetailPanelProps) {
         )}
       </div>
 
-      {/* LLM / OpenInference view — rendered for LLM and non-LLM OI spans */}
+      {/* LLM view — rendered for LLM spans */}
       <LlmSpanDetail tags={span.tags} logs={span.logs} operationName={span.operationName} />
 
       {/* Span attributes */}
