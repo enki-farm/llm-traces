@@ -7,16 +7,14 @@ A Grafana app plugin for visualizing LLM (Large Language Model) traces stored in
 
 Supports multiple span conventions out of the box:
 
-- **OpenInference** (Phoenix, Traceloop, etc.)
 - **OTel GenAI** (OpenTelemetry Semantic Conventions for GenAI)
-- **Vertex AI** (GCP Vertex AI Agent Builder)
 
 ## Features
 
 - Browse and search LLM traces via TraceQL
 - Inspect input/output messages with Markdown rendering
 - View tool calls with JSON payloads
-- Multi-convention detection tabs (LLM / OpenInference / OTel GenAI)
+- Multi-convention detection tabs (LLM / OTel GenAI)
 - Token usage and estimated cost per span
 - Trace timeline with span hierarchy visualization
 - Resizable detail panels
@@ -111,7 +109,7 @@ npm run lint
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
-## Origin and License
+## Origin and License
 
 This project is a substantially modified continuation of
 Agoda's LLM Traces.
