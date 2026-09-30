@@ -111,8 +111,22 @@ npm run lint
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
-## License
+## Origin and License
 
-[Apache-2.0](LICENSE)
+This project is a substantially modified continuation of
+Agoda's LLM Traces.
 
-Copyright 2026 Agoda Services Co., Ltd.
+The original project was created by Agoda Services Co., Ltd. and
+released under the Apache License 2.0. This project retains and
+extends parts of the original project's architecture, UI, build
+tooling, and implementation while substantially updating the
+implementation around current Grafana and OpenTelemetry GenAI
+semantic conventions.
+
+We are grateful to the original authors and contributors for the
+foundation this project builds upon.
+
+Copyright 2026 enki GmbH.
+
+This project is licensed under the Apache License, Version 2.0.
+See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
