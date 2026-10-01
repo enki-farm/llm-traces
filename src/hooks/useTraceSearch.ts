@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { DataSourceApi, TimeRange } from '@grafana/data';
-import { isTraceSearchSpanError, TempoTraceSearchResult, searchTraces } from '../utils/tempoClient';
+import { groupTracesByConversation, isTraceSearchSpanError, TempoTraceSearchResult, searchTraces } from '../utils/tempoClient';
 import { TempoLikeQuery, tempoQueryToTraceQL } from '../utils/queryBuilder';
 
 /** Extract a display name and service name from spanSets when rootTraceName/rootServiceName are blank. */
@@ -172,9 +172,7 @@ export function useTraceSearch({
   );
 
   const displayedTraces = useMemo(() => {
-    const sorted = [...traces].sort((a, b) =>
-      Number(BigInt(b.startTimeUnixNano) - BigInt(a.startTimeUnixNano))
-    );
+    const sorted = groupTracesByConversation(traces);
     return errorsOnly
       ? sorted.filter((t) =>
           t.spanSets?.some((ss) =>

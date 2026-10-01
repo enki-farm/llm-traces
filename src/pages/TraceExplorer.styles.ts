@@ -114,6 +114,27 @@ export const getStyles = (theme: GrafanaTheme2) => ({
     background: `${theme.colors.primary.transparent} !important`,
     borderLeft: `3px solid ${theme.colors.primary.main}`,
   }),
+  traceItemInConversation: css({
+    paddingLeft: theme.spacing(3),
+  }),
+  conversationHeader: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(0.75),
+    padding: `${theme.spacing(0.5)} ${theme.spacing(1.5)}`,
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+    background: theme.colors.background.secondary,
+    fontSize: '11px',
+    color: theme.colors.text.secondary,
+  }),
+  conversationId: css({
+    flex: 1,
+    minWidth: 0,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    fontFamily: theme.typography.fontFamilyMonospace,
+  }),
   traceName: css({
     fontWeight: theme.typography.fontWeightMedium,
     fontSize: theme.typography.bodySmall.fontSize,

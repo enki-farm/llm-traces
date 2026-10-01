@@ -263,6 +263,44 @@ export const TRACE_RESPONSE = {
 // OTel GenAI trace fixture (gen_ai.system=openai + span events)
 // ---------------------------------------------------------------------------
 
+const memoryOperations = [
+  'create_memory_store', 'create_memory', 'search_memory', 'update_memory',
+  'upsert_memory', 'delete_memory', 'delete_memory_store',
+];
+
+export const MEMORY_TRACE_RESPONSE = {
+  resourceSpans: TRACE_RESPONSE.resourceSpans.map((resourceSpan) => ({
+    ...resourceSpan,
+    scopeSpans: resourceSpan.scopeSpans.map((scopeSpan) => ({
+      ...scopeSpan,
+      spans: [
+        ...scopeSpan.spans,
+        ...memoryOperations.map((operation, index) => ({
+          traceId: TRACE_ID,
+          spanId: `memory000${index}`,
+          parentSpanId: 'span0001',
+          name: operation,
+          startTimeUnixNano: t(100 + index * 100),
+          endTimeUnixNano: t(150 + index * 100),
+          attributes: [
+            { key: 'gen_ai.operation.name', value: { stringValue: operation } },
+            { key: 'gen_ai.memory.store.id', value: { stringValue: 'guest-preferences' } },
+            ...(['create_memory', 'update_memory', 'delete_memory'].includes(operation)
+              ? [{ key: 'gen_ai.memory.record.id', value: { stringValue: 'preference-1' } }] : []),
+            ...(!operation.endsWith('_store')
+              ? [{ key: 'gen_ai.memory.record.count', value: { intValue: '1' } }] : []),
+            ...(operation === 'search_memory'
+              ? [{ key: 'gen_ai.memory.query.text', value: { stringValue: 'seat preference' } }] : []),
+            ...(['create_memory', 'search_memory', 'update_memory', 'upsert_memory'].includes(operation)
+              ? [{ key: 'gen_ai.memory.records', value: { stringValue: '[{"id":"preference-1","content":"Aisle seat preferred","score":0.96}]' } }] : []),
+          ],
+          events: [],
+        })),
+      ],
+    })),
+  })),
+};
+
 const OTEL_TRACE_ID = 'otelgenai00112233445566778899aa';
 const to = (offsetMs: number) => String(BigInt(1741900000000 + offsetMs) * 1000000n);
 

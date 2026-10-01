@@ -56,6 +56,7 @@ export interface LlmSpanData {
   tokenUsage: LlmTokenUsage;
   invocationParams: LlmInvocationParams;
   finishReason?: string;
+  finishReasons?: string[]; // one per choice, in choice order
   responseId?: string; // gen_ai.response.id (OTel GenAI)
   precomputedCostUsd?: number;
 }
@@ -91,6 +92,38 @@ function getNumAttr(tags: KeyValuePair[], key: string): number | undefined {
   if (typeof tag.value === 'string' && tag.value.trim() === '') return undefined;
   const n = Number(tag.value);
   return isNaN(n) ? undefined : n;
+}
+
+/**
+ * Reads a finish-reason array attribute in any of the shapes it reaches us:
+ * JSON array string, comma-joined OTLP array (see parseOtlpValue), or flat-indexed `key.N` tags.
+ */
+function extractFinishReasons(tags: KeyValuePair[], key: string, fallbackKeys: string[] = []): string[] {
+  const raw = getAttr(tags, key);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return parsed.map(String).filter(Boolean);
+      }
+    } catch { /* not JSON */ }
+    return raw.replace(/[[\]{}"']/g, '').split(',').map((r) => r.trim()).filter(Boolean);
+  }
+  const indexed = tags
+    .map((t) => ({ match: t.key.startsWith(`${key}.`) ? t.key.slice(key.length + 1).match(/^(\d+)$/) : null, tag: t }))
+    .filter((e) => e.match && e.tag.value !== null && e.tag.value !== undefined && e.tag.value !== '')
+    .sort((a, b) => Number(a.match![1]) - Number(b.match![1]))
+    .map((e) => String(e.tag.value));
+  if (indexed.length > 0) {
+    return indexed;
+  }
+  for (const fallback of fallbackKeys) {
+    const value = getAttr(tags, fallback);
+    if (value) {
+      return [value];
+    }
+  }
+  return [];
 }
 
 function looksLikeMessages(value: string): boolean {
@@ -626,17 +659,8 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     }
   }
 
-  const finishReasonsRaw = getAttr(tags, 'gen_ai.response.finish_reasons');
-  let finishReasonFromArray: string | undefined;
-  if (finishReasonsRaw) {
-    try {
-      const arr = JSON.parse(finishReasonsRaw);
-      if (Array.isArray(arr) && arr.length > 0) finishReasonFromArray = String(arr[0]);
-    } catch { /* not an array */ }
-  }
-  const finishReason = getAttr(tags, 'gen_ai.response.finish_reasons.0')
-    ?? finishReasonFromArray
-    ?? getAttr(tags, 'gen_ai.finish_reason');
+  const finishReasons = extractFinishReasons(tags, 'gen_ai.response.finish_reasons', ['gen_ai.finish_reason']);
+  const finishReason = finishReasons[0];
   const precomputedCostUsd = getNumAttr(tags, 'gen_ai.cost.total_cost');
   const spanKind = getAttr(tags, 'gen_ai.operation.name')
     ? OTEL_OPERATION_TO_KIND[getAttr(tags, 'gen_ai.operation.name')!.toLowerCase()]
@@ -687,6 +711,7 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
         : {}),
     },
     finishReason,
+    ...(finishReasons.length > 0 ? { finishReasons } : {}),
     ...(responseId ? { responseId } : {}),
     ...(precomputedCostUsd !== undefined ? { precomputedCostUsd } : {}),
   };
@@ -754,6 +779,7 @@ function extractGeneric(tags: KeyValuePair[], logs: SpanLog[], operationName?: s
       };
     })(),
     finishReason,
+    ...(finishReason ? { finishReasons: [finishReason] } : {}),
     ...(precomputedCostUsd !== undefined ? { precomputedCostUsd } : {}),
   };
 }
@@ -874,6 +900,14 @@ const OTEL_OPERATION_TO_KIND: Record<string, string> = {
   tool_call: 'TOOL',
   // RETRIEVER
   retrieval: 'RETRIEVER',
+  // MEMORY
+  create_memory_store: 'MEMORY',
+  create_memory: 'MEMORY',
+  search_memory: 'MEMORY',
+  update_memory: 'MEMORY',
+  upsert_memory: 'MEMORY',
+  delete_memory: 'MEMORY',
+  delete_memory_store: 'MEMORY',
   // EMBEDDING
   embeddings: 'EMBEDDING',
   create_embeddings: 'EMBEDDING',
@@ -926,6 +960,7 @@ export function getSpanKindColor(kind: string | undefined): string {
     case 'AGENT': return '#E0851A';
     case 'TOOL': return '#5794F2';
     case 'RETRIEVER': return '#73BF69';
+    case 'MEMORY': return '#4E9A8A';
     case 'EMBEDDING': return '#B877D9';
     case 'RERANKER': return '#FF9830';
     case 'GUARDRAIL': return '#F59E0B';

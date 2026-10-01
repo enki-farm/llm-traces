@@ -138,6 +138,15 @@ describe('extractLlmSpanData — model-bearing retrieval is a RETRIEVER, not an 
   assertEquals(isLlmSpan(tags), false, 'retrieval with a model is not counted as an LLM span');
 });
 
+describe('extractLlmSpanData — every memory operation uses the MEMORY detail', () => {
+  for (const operation of ['create_memory_store', 'create_memory', 'search_memory', 'update_memory', 'upsert_memory', 'delete_memory', 'delete_memory_store']) {
+    const tags: KeyValuePair[] = [kv('gen_ai.operation.name', operation), kv('gen_ai.memory.store.id', 'store-1')];
+    const result = extractLlmSpanData(tags, []);
+    assertEquals(result.spanKind, 'MEMORY', `${operation} maps to MEMORY`);
+    assertEquals(result.isLlm, false, `${operation} is not an LLM span`);
+  }
+});
+
 describe('extractLlmSpanData — OTel GenAI with tool_calls in output', () => {
   const toolCallsJson = JSON.stringify([
     { role: 'assistant', parts: [{ type: 'tool_call', name: 'search', arguments: { q: 'hotels' }, id: 'call_abc' }] }
@@ -1290,6 +1299,30 @@ describe('BUG-028: dotted path gen_ai.response.finish_reasons.0 still works', ()
   ];
   const result = extractLlmSpanData(tags, []);
   assertEquals(result.finishReason, 'length', 'dotted path finish reason still works');
+});
+
+describe('finish reasons: all choices are extracted', () => {
+  const base = [kv('gen_ai.system', 'openai'), kv('gen_ai.request.model', 'gpt-4')];
+  assertDeepEquals(
+    extractLlmSpanData([...base, kv('gen_ai.response.finish_reasons', JSON.stringify(['stop', 'length']))], []).finishReasons,
+    ['stop', 'length'],
+    'JSON array keeps every finish reason'
+  );
+  assertDeepEquals(
+    extractLlmSpanData([...base, kv('gen_ai.response.finish_reasons', 'stop, length')], []).finishReasons,
+    ['stop', 'length'],
+    'comma-joined OTLP array value is split'
+  );
+  assertDeepEquals(
+    extractLlmSpanData([...base, kv('gen_ai.response.finish_reasons.1', 'length'), kv('gen_ai.response.finish_reasons.0', 'stop')], []).finishReasons,
+    ['stop', 'length'],
+    'flat-indexed finish reasons are ordered by index'
+  );
+  assertEquals(
+    extractLlmSpanData(base, []).finishReasons,
+    undefined,
+    'no finish reasons when the attribute is absent'
+  );
 });
 
 // ---------------------------------------------------------------------------

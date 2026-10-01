@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import { useResize } from '../utils/useResize';
 
@@ -20,6 +20,7 @@ import { formatDuration, formatTime } from '../utils/formatUtils';
 import { useDatasource } from '../hooks/useDatasource';
 import { useOpenTrace } from '../hooks/useOpenTrace';
 import { useTraceSearch } from '../hooks/useTraceSearch';
+import { getTraceConversationId } from '../utils/tempoClient';
 
 // URL param keys — namespaced to avoid conflicts with Grafana's own params
 const URL_DS_KEY = 'llt-ds';
@@ -128,6 +129,18 @@ export function TraceExplorer() {
     urlPreferredTraceRef,
     onSearchStart: clearTrace,
   });
+
+  const conversationIds = useMemo(
+    () => displayedTraces.map((t) => getTraceConversationId(t)),
+    [displayedTraces]
+  );
+  const conversationSizes = useMemo(() => {
+    const sizes = new Map<string, number>();
+    for (const id of conversationIds) {
+      if (id) { sizes.set(id, (sizes.get(id) ?? 0) + 1); }
+    }
+    return sizes;
+  }, [conversationIds]);
 
   // Coordination: reset state when datasource changes
   useEffect(() => {
@@ -491,7 +504,7 @@ export function TraceExplorer() {
               <span>{errorsOnly ? 'No error traces' : 'No traces found'}</span>
             </div>
           )}
-          {displayedTraces.map((trace) => {
+          {displayedTraces.map((trace, index) => {
             const hasError = trace.spanSets?.some((ss) =>
               ss.spans?.some((sp) =>
                 sp.attributes?.some((a) => a.key === 'status' && String(a.value?.stringValue ?? '').toUpperCase() === 'ERROR')
@@ -499,11 +512,26 @@ export function TraceExplorer() {
             ) ?? false;
             const displayName = trace.rootTraceName || trace.traceID;
             const displayService = trace.rootServiceName || '';
+            const conversationId = conversationIds[index];
+            const conversationSize = conversationId ? conversationSizes.get(conversationId) ?? 0 : 0;
+            const inConversation = conversationSize > 1;
+            const startsConversation = inConversation && conversationIds[index - 1] !== conversationId;
             return (
+              <Fragment key={trace.traceID}>
+              {startsConversation && (
+                <div
+                  className={styles.conversationHeader}
+                  data-testid={`conversation-group-${conversationId}`}
+                  title={`gen_ai.conversation.id: ${conversationId}`}
+                >
+                  <Icon name="comments-alt" size="sm" />
+                  <span className={styles.conversationId}>{conversationId}</span>
+                  <span>{conversationSize} traces</span>
+                </div>
+              )}
               <div
-                key={trace.traceID}
                 id={`trace-option-${trace.traceID}`}
-                className={`${styles.traceItem} ${trace.traceID === selectedTraceId ? styles.traceItemSelected : ''}`}
+                className={`${styles.traceItem} ${inConversation ? styles.traceItemInConversation : ''} ${trace.traceID === selectedTraceId ? styles.traceItemSelected : ''}`}
                 onClick={() => openTrace(trace.traceID, `${displayService} · ${displayName}`)}
                 onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && openTrace(trace.traceID, `${displayService} · ${displayName}`)}
                 role="option"
@@ -549,6 +577,7 @@ export function TraceExplorer() {
                   </button>
                 </div>
               </div>
+              </Fragment>
             );
           })}
           {loadingMore && (

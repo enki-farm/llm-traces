@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { SEARCH_RESPONSE, TRACE_RESPONSE, OTEL_GENAI_TRACE_RESPONSE } from './fixtures/llm-trace';
+import { SEARCH_RESPONSE, TRACE_RESPONSE, MEMORY_TRACE_RESPONSE, OTEL_GENAI_TRACE_RESPONSE } from './fixtures/llm-trace';
 
 const PLUGIN_URL = '/a/llm-traces-app';
 async function mockTempoApis(page: Page) {
@@ -292,6 +292,37 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('retriever-output-section')).toContainText('"id": "faq-1"');
     await expect(page.getByTestId('retriever-output-section')).toContainText('"content": "Check-in starts at 3 PM"');
     await expect(page.getByTestId('retriever-params-section')).toHaveCount(0);
+  });
+
+  test('all memory operations show their own detail view', async ({ page }) => {
+    await page.route('**/api/datasources/proxy/uid/**/api/traces/**', async (route) => {
+      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(MEMORY_TRACE_RESPONSE) });
+    });
+    await page.reload();
+    await page.click('[data-testid^="trace-item-"]');
+
+    const operations = [
+      'create_memory_store', 'create_memory', 'search_memory', 'update_memory',
+      'upsert_memory', 'delete_memory', 'delete_memory_store',
+    ];
+    for (const [index, operation] of operations.entries()) {
+      await page.getByTestId(`span-row-memory000${index}`).click();
+      await expect(page.getByTestId('genai-span-kind')).toHaveText('MEMORY');
+      const detail = page.getByTestId('memory-section');
+      await expect(detail.getByTestId('memory-meta-row')).toContainText(operation.replace(/_/g, ' '));
+      await expect(detail.getByTestId('memory-meta-row')).toContainText('guest-preferences');
+      if (!operation.endsWith('_store')) {
+        await expect(detail.getByTestId('memory-meta-row')).toContainText('Records: 1');
+      }
+      if (operation === 'search_memory') {
+        await expect(detail.getByTestId('memory-input-section')).toContainText('seat preference');
+      }
+      if (['create_memory', 'search_memory', 'update_memory', 'upsert_memory'].includes(operation)) {
+        await expect(detail.getByTestId('memory-records-section')).toContainText('Aisle seat preferred');
+      } else {
+        await expect(detail.getByTestId('memory-records-section')).toHaveCount(0);
+      }
+    }
   });
 
   test('GUARDRAIL span shows LLM detail panel', async ({ page }) => {
@@ -1003,8 +1034,8 @@ test.describe('LLM Trace Explorer', () => {
     // Must also include gen_ai.operation.name — the primary OTel GenAI span marker set by
     // opentelemetry-instrumentation-openai; spans from that library may not set gen_ai.system
     expect(q).toContain('gen_ai.operation.name');
-    // Must be wrapped in braces (valid TraceQL)
-    expect(q).toMatch(/^\{.+\}$/);
+    // Must be wrapped in braces (valid TraceQL), optionally selecting the conversation id
+    expect(q).toMatch(/^\{.+\}( \| select\(span\.gen_ai\.conversation\.id\))?$/);
   });
 
   test('visual snapshot — trace explorer empty state', async ({ page }) => {

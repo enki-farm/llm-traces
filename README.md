@@ -59,6 +59,23 @@ Open **http://localhost:3000** (admin / admin). Tempo OTLP endpoints are availab
 
 > Requires Docker Compose v2.17+ for `dockerfile_inline` support.
 
+### Synthetic GenAI traces
+
+With the local Tempo stack running, inject demonstration spans using:
+
+```bash
+python3 -m pip install -r requirements.txt
+python3 scripts/inject_otel_ai_traces.py
+```
+
+The injector sends OTLP/HTTP to `localhost:4318/v1/traces`; it does not call any AI provider. Its six scenario groups cover agent planning and tools, Gemini recommendations, RAG with standalone embeddings, order management, a memory-store/workflow lifecycle, and streamed and background responses. Together they emit all 18 well-known operations in the checked-in [GenAI span conventions](docs/otel_genai_semantic_convention_spans.md), plus representative prompt, cache, multimodal, streaming, polling and error attributes. Message and memory content is synthetic opt-in demonstration data, not a production capture policy.
+
+The span coverage and consistency checks run without Tempo:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_inject_otel_ai_traces.py'
+```
+
 ### Using provisioning
 
 To auto-enable the plugin (Grafana app plugins must be explicitly enabled):

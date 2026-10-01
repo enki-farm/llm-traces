@@ -27,18 +27,19 @@ Install:
         opentelemetry-exporter-otlp-proto-http
 """
 
+import functools
 import json
 import time
 import uuid
 
-from opentelemetry import trace
+from opentelemetry import context as otel_context, trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter,
 )
-from opentelemetry.trace import SpanKind
+from opentelemetry.trace import SpanKind, Status, StatusCode
 
 
 TEMPO_ENDPOINT = "http://localhost:4318/v1/traces"
@@ -81,6 +82,40 @@ def new_id(prefix):
     return f"{prefix}-{uuid.uuid4().hex[:12]}"
 
 
+_CONVERSATION_ID_KEY = otel_context.create_key("gen_ai.conversation.id")
+
+
+def in_conversation(scenario):
+    """
+    Run a scenario inside a fresh conversation so every span it starts
+    (across all of its traces) carries the same gen_ai.conversation.id.
+    """
+
+    @functools.wraps(scenario)
+    def run(tracer):
+        token = otel_context.attach(
+            otel_context.set_value(_CONVERSATION_ID_KEY, new_id("conversation"))
+        )
+        try:
+            return scenario(tracer)
+        finally:
+            otel_context.detach(token)
+
+    return run
+
+
+def current_conversation_id():
+    return otel_context.get_value(_CONVERSATION_ID_KEY)
+
+
+def start_span(tracer, name, kind):
+    span = tracer.start_span(name, kind=kind)
+    conversation_id = current_conversation_id()
+    if conversation_id:
+        span.set_attribute("gen_ai.conversation.id", conversation_id)
+    return span
+
+
 # ---------------------------------------------------------------------------
 # GenAI span helpers
 # ---------------------------------------------------------------------------
@@ -101,7 +136,8 @@ def start_agent_span(
         name      = invoke_agent {gen_ai.agent.name}
     """
 
-    span = tracer.start_span(
+    span = start_span(
+        tracer,
         f"invoke_agent {agent_name}",
         kind=SpanKind.INTERNAL,
     )
@@ -141,7 +177,8 @@ def start_plan_span(
     The current convention defines plan as an INTERNAL span.
     """
 
-    span = tracer.start_span(
+    span = start_span(
+        tracer,
         f"plan {agent_name}",
         kind=SpanKind.INTERNAL,
     )
@@ -179,6 +216,7 @@ def start_inference_span(
     conversation_id=None,
     server_address=None,
     server_port=None,
+    extra_attributes=None,
 ):
     """
     Start a current GenAI inference span.
@@ -192,7 +230,8 @@ def start_inference_span(
 
     span_name = f"{operation} {model}"
 
-    span = tracer.start_span(
+    span = start_span(
+        tracer,
         span_name,
         kind=SpanKind.CLIENT,
     )
@@ -297,6 +336,68 @@ def start_inference_span(
             json_attr(output_messages),
         )
 
+    if extra_attributes:
+        set_attributes(span, extra_attributes)
+
+    return span
+
+
+def start_embeddings_span(tracer, *, model, input_tokens, dimensions):
+    span = start_span(tracer, f"embeddings {model}", kind=SpanKind.CLIENT)
+    set_attributes(span, {
+        "gen_ai.operation.name": "embeddings",
+        "gen_ai.provider.name": "openai",
+        "gen_ai.request.model": model,
+        "gen_ai.response.model": model,
+        "gen_ai.embeddings.dimension.count": dimensions,
+        "gen_ai.request.encoding_formats": ["float"],
+        "gen_ai.usage.input_tokens": input_tokens,
+        "server.address": "api.openai.com",
+        "server.port": 443,
+    })
+    return span
+
+
+def start_fetch_response_span(tracer, *, response_id, status, cursor=None,
+                              output_messages=None, finish_reasons=None):
+    span = start_span(tracer, "fetch_response", kind=SpanKind.CLIENT)
+    set_attributes(span, {
+        "gen_ai.operation.name": "fetch_response",
+        "gen_ai.provider.name": "openai",
+        "gen_ai.response.id": response_id,
+        "gen_ai.response.status": status,
+        "gen_ai.request.stream_cursor": cursor,
+        "gen_ai.response.finish_reasons": finish_reasons,
+        "gen_ai.output.messages": json_attr(output_messages) if output_messages else None,
+        "server.address": "api.openai.com",
+        "server.port": 443,
+    })
+    return span
+
+
+def start_memory_span(tracer, operation, *, store_id, record_id=None, count=None,
+                      query=None, records=None):
+    span = start_span(tracer, operation, kind=SpanKind.CLIENT)
+    set_attributes(span, {
+        "gen_ai.operation.name": operation,
+        "gen_ai.provider.name": "aws.bedrock",
+        "gen_ai.memory.store.id": store_id,
+        "gen_ai.memory.record.id": record_id,
+        "gen_ai.memory.record.count": count,
+        "gen_ai.memory.query.text": query,
+        "gen_ai.memory.records": json_attr(records) if records is not None else None,
+        "server.address": "bedrock-agentcore.us-east-1.amazonaws.com",
+        "server.port": 443,
+    })
+    return span
+
+
+def start_agent_operation_span(tracer, operation, agent_name):
+    span = start_span(tracer, f"{operation} {agent_name}", kind=SpanKind.INTERNAL)
+    set_attributes(span, {
+        "gen_ai.operation.name": operation,
+        "gen_ai.agent.name": agent_name,
+    })
     return span
 
 
@@ -319,7 +420,8 @@ def start_tool_span(
         name      = execute_tool {gen_ai.tool.name}
     """
 
-    span = tracer.start_span(
+    span = start_span(
+        tracer,
         f"execute_tool {tool_name}",
         kind=SpanKind.INTERNAL,
     )
@@ -423,6 +525,7 @@ def search_products(category, max_price):
 # Main synthetic trace
 # ---------------------------------------------------------------------------
 
+@in_conversation
 def inject_customer_support_agent(tracer):
     """
     Complex trace:
@@ -443,7 +546,7 @@ def inject_customer_support_agent(tracer):
     agent_name = "Customer Support Agent"
     agent_id = "agent-customer-support-v1"
     agent_version = "1.4.0"
-    conversation_id = new_id("conversation")
+    conversation_id = current_conversation_id()
 
     # ---------------------------------------------------------------
     # Agent invocation
@@ -550,6 +653,16 @@ def inject_customer_support_agent(tracer):
             conversation_id=conversation_id,
             server_address="api.anthropic.com",
             server_port=443,
+            extra_attributes={
+                "gen_ai.request.top_k": 40,
+                "gen_ai.tool.definitions": json_attr([{
+                    "type": "function", "name": "get_product",
+                    "description": "Retrieve product information by product ID.",
+                    "parameters": {"type": "object", "properties": {
+                        "product_id": {"type": "string"},
+                    }, "required": ["product_id"]},
+                }]),
+            },
             system_instructions=[
                 {
                     "type": "text",
@@ -703,6 +816,7 @@ def inject_customer_support_agent(tracer):
             time.sleep(0.94)
 
 
+@in_conversation
 def inject_recommendation_agent(tracer):
     """
     Second agentic trace to exercise a different provider and a tool
@@ -718,7 +832,7 @@ def inject_recommendation_agent(tracer):
     """
 
     agent_name = "Product Recommendation Agent"
-    conversation_id = new_id("conversation")
+    conversation_id = current_conversation_id()
 
     agent_span = start_agent_span(
         tracer,
@@ -897,17 +1011,17 @@ def start_retrieval_span(
     *,
     data_source_id,
     provider=None,
-    model,
+    model=None,
     query,
     top_k,
     retrieved_documents=None,
-    embedding_tokens=None,
 ):
     """
     Start a retrieval span for RAG pipelines.
     """
 
-    span = tracer.start_span(
+    span = start_span(
+        tracer,
         f"retrieval {data_source_id}",
         kind=SpanKind.CLIENT,
     )
@@ -923,10 +1037,8 @@ def start_retrieval_span(
             provider,
         )
 
-    span.set_attribute(
-        "gen_ai.request.model",
-        model,
-    )
+    if model:
+        span.set_attribute("gen_ai.request.model", model)
 
     span.set_attribute(
         "gen_ai.data_source.id",
@@ -949,12 +1061,6 @@ def start_retrieval_span(
             json_attr(retrieved_documents),
         )
 
-    if embedding_tokens is not None:
-        span.set_attribute(
-            "gen_ai.usage.input_tokens",
-            embedding_tokens,
-        )
-
     return span
 
 
@@ -974,7 +1080,8 @@ def start_kb_lookup_span(
     Start a knowledge-base lookup span simulating internal search.
     """
 
-    span = tracer.start_span(
+    span = start_span(
+        tracer,
         f"retrieval {data_source_id}",
         kind=SpanKind.CLIENT,
     )
@@ -1067,11 +1174,13 @@ def retrieve_knowledge(query, top_k=3):
 # Multi-turn RAG agent
 # ---------------------------------------------------------------------------
 
+@in_conversation
 def inject_rag_support_agent(tracer):
     """
-    Complex multi-turn RAG trace:
+    Multi-turn RAG conversation: one trace per turn, sharing
+    gen_ai.conversation.id.
 
-        invoke_agent RAG Support Agent
+        invoke_agent RAG Support Agent          (trace 1)
         |
         +-- chat claude-sonnet-4-5
         |     (decides to retrieve knowledge)
@@ -1081,6 +1190,8 @@ def inject_rag_support_agent(tracer):
         |
         +-- chat claude-sonnet-4-5
         |     (generates answer from context)
+
+        invoke_agent RAG Support Agent          (trace 2)
         |
         +-- chat claude-sonnet-4-5
         |     (user follow-up question)
@@ -1095,7 +1206,7 @@ def inject_rag_support_agent(tracer):
     agent_name = "RAG Support Agent"
     agent_id = "agent-rag-support-v3"
     agent_version = "3.2.1"
-    conversation_id = new_id("conversation")
+    conversation_id = current_conversation_id()
 
     agent_span = start_agent_span(
         tracer,
@@ -1175,11 +1286,17 @@ def inject_rag_support_agent(tracer):
         # Turn 1: Retrieve knowledge
         # -----------------------------------------------------------
 
+        embedding = start_embeddings_span(
+            tracer, model="text-embedding-3-small", input_tokens=128, dimensions=1536,
+        )
+        with trace.use_span(embedding, end_on_exit=True):
+            time.sleep(0.06)
+
         retrieve1 = start_retrieval_span(
             tracer,
             data_source_id="faiss-index",
-            provider="openai",
-            model="text-embedding-3-small",
+            provider=None,
+            model=None,
             query="shipping delivery return policy",
             top_k=3,
             retrieved_documents=[
@@ -1194,7 +1311,6 @@ def inject_rag_support_agent(tracer):
                     "score": 0.89,
                 },
             ],
-            embedding_tokens=128,
         )
 
         with trace.use_span(retrieve1, end_on_exit=True):
@@ -1204,7 +1320,7 @@ def inject_rag_support_agent(tracer):
         kb1 = start_kb_lookup_span(
             tracer,
             data_source_id="company-faq",
-            provider="internal",
+            provider=None,
             query="shipping delivery return policy",
             results=[
                 {
@@ -1310,6 +1426,17 @@ def inject_rag_support_agent(tracer):
         with trace.use_span(turn1_answer, end_on_exit=True):
             time.sleep(0.82)
 
+    # Each user turn is a separate request, i.e. its own trace, correlated
+    # with the previous turn only through gen_ai.conversation.id.
+    agent_span = start_agent_span(
+        tracer,
+        agent_name,
+        agent_id=agent_id,
+        agent_version=agent_version,
+    )
+
+    with trace.use_span(agent_span, end_on_exit=True):
+
         # -----------------------------------------------------------
         # Turn 2: User follow-up about their order
         # -----------------------------------------------------------
@@ -1397,11 +1524,17 @@ def inject_rag_support_agent(tracer):
         # Turn 2: Retrieve order info
         # -----------------------------------------------------------
 
+        embedding = start_embeddings_span(
+            tracer, model="text-embedding-3-small", input_tokens=96, dimensions=1536,
+        )
+        with trace.use_span(embedding, end_on_exit=True):
+            time.sleep(0.06)
+
         retrieve2 = start_retrieval_span(
             tracer,
             data_source_id="faiss-index",
-            provider="openai",
-            model="text-embedding-3-small",
+            provider=None,
+            model=None,
             query="order ORD-98765 status tracking",
             top_k=1,
             retrieved_documents=[
@@ -1413,7 +1546,6 @@ def inject_rag_support_agent(tracer):
                     "eta": "2026-10-02",
                 }
             ],
-            embedding_tokens=96,
         )
 
         with trace.use_span(retrieve2, end_on_exit=True):
@@ -1520,11 +1652,13 @@ def inject_rag_support_agent(tracer):
 # Multi-tool orchestration agent
 # ---------------------------------------------------------------------------
 
+@in_conversation
 def inject_multi_tool_agent(tracer):
     """
-    Complex multi-tool orchestration trace:
+    Multi-tool orchestration conversation: one trace per turn, sharing
+    gen_ai.conversation.id.
 
-        invoke_agent Order Management Agent
+        invoke_agent Order Management Agent     (trace 1)
         |
         +-- chat claude-sonnet-4-5
         |     (user wants to modify order)
@@ -1537,6 +1671,8 @@ def inject_multi_tool_agent(tracer):
         |
         +-- chat claude-sonnet-4-5
         |     (confirm all changes)
+
+        invoke_agent Order Management Agent     (trace 2)
         |
         +-- chat claude-sonnet-4-5
         |     (user asks to cancel, agent checks policy)
@@ -1551,7 +1687,7 @@ def inject_multi_tool_agent(tracer):
     agent_name = "Order Management Agent"
     agent_id = "agent-order-mgmt-v2"
     agent_version = "2.0.5"
-    conversation_id = new_id("conversation")
+    conversation_id = current_conversation_id()
 
     agent_span = start_agent_span(
         tracer,
@@ -1803,6 +1939,17 @@ def inject_multi_tool_agent(tracer):
         with trace.use_span(turn1_confirm, end_on_exit=True):
             time.sleep(0.88)
 
+    # Each user turn is a separate request, i.e. its own trace, correlated
+    # with the previous turn only through gen_ai.conversation.id.
+    agent_span = start_agent_span(
+        tracer,
+        agent_name,
+        agent_id=agent_id,
+        agent_version=agent_version,
+    )
+
+    with trace.use_span(agent_span, end_on_exit=True):
+
         # -----------------------------------------------------------
         # Turn 2: User wants to cancel
         # -----------------------------------------------------------
@@ -1888,11 +2035,17 @@ def inject_multi_tool_agent(tracer):
         # Turn 2: Retrieve cancellation policy
         # -----------------------------------------------------------
 
+        embedding = start_embeddings_span(
+            tracer, model="text-embedding-3-small", input_tokens=112, dimensions=1536,
+        )
+        with trace.use_span(embedding, end_on_exit=True):
+            time.sleep(0.06)
+
         retrieve_cancel = start_retrieval_span(
             tracer,
             data_source_id="faiss-index",
-            provider="openai",
-            model="text-embedding-3-small",
+            provider=None,
+            model=None,
             query="cancellation policy refund",
             top_k=2,
             retrieved_documents=[
@@ -1916,7 +2069,6 @@ def inject_multi_tool_agent(tracer):
                     ),
                 },
             ],
-            embedding_tokens=112,
         )
 
         with trace.use_span(retrieve_cancel, end_on_exit=True):
@@ -2042,6 +2194,202 @@ def inject_multi_tool_agent(tracer):
 
 
 # ---------------------------------------------------------------------------
+# Additional semantic-convention scenarios
+# ---------------------------------------------------------------------------
+
+@in_conversation
+def inject_memory_workflow(tracer):
+    agent_name = "Travel Preference Assistant"
+    store_id = new_id("travel-preferences")
+    record_id = new_id("preference")
+
+    created = start_agent_operation_span(tracer, "create_agent", agent_name)
+    with trace.use_span(created, end_on_exit=True):
+        created.set_attribute("gen_ai.agent.id", "travel-preference-assistant-v1")
+
+    workflow = start_agent_operation_span(tracer, "invoke_workflow", "Trip Preparation")
+    with trace.use_span(workflow, end_on_exit=True):
+        agent = start_agent_span(
+            tracer, agent_name, agent_id="travel-preference-assistant-v1", agent_version="1.0.0",
+        )
+        with trace.use_span(agent, end_on_exit=True):
+            operations = [
+                ("create_memory_store", {}),
+                ("create_memory", {
+                    "record_id": record_id, "count": 1,
+                    "records": [{"id": record_id, "content": "Window seat preferred"}],
+                }),
+                ("search_memory", {
+                    "count": 1, "query": "seat preference",
+                    "records": [{"id": record_id, "content": "Window seat preferred", "score": 0.96}],
+                }),
+                ("update_memory", {
+                    "record_id": record_id, "count": 1,
+                    "records": [{"id": record_id, "content": "Aisle seat preferred"}],
+                }),
+                ("upsert_memory", {
+                    "count": 1,
+                    "records": [{"id": record_id, "content": "Aisle seat preferred; vegetarian meal"}],
+                }),
+                ("search_memory", {
+                    "count": 1, "query": "meal preference",
+                    "records": [{"id": record_id, "content": "Aisle seat preferred; vegetarian meal", "score": 0.93}],
+                }),
+                ("delete_memory", {"record_id": record_id, "count": 1}),
+                ("delete_memory_store", {}),
+            ]
+            for operation, details in operations:
+                memory = start_memory_span(tracer, operation, store_id=store_id, **details)
+                with trace.use_span(memory, end_on_exit=True):
+                    time.sleep(0.04)
+
+
+@in_conversation
+def inject_legacy_completion(tracer):
+    """
+    Legacy completions API returning two choices, one finish reason each:
+
+        text_completion gpt-3.5-turbo-instruct
+    """
+
+    legacy = start_inference_span(
+        tracer, provider="openai", model="gpt-3.5-turbo-instruct",
+        operation="text_completion", input_tokens=19, output_tokens=24,
+        response_id=new_id("cmpl"), finish_reasons=["stop", "length"],
+        extra_attributes={"gen_ai.request.choice.count": 2, "gen_ai.request.top_p": 0.9},
+        server_address="api.openai.com", server_port=443,
+        input_messages=[{"role": "user", "parts": [{"type": "text", "content": "Suggest a title for a trip briefing."}]}],
+        output_messages=[
+            {"role": "assistant", "parts": [{"type": "text", "content": "Trip briefing"}]},
+            {"role": "assistant", "parts": [{"type": "text", "content": "Travel itinerary"}]},
+        ],
+    )
+    with trace.use_span(legacy, end_on_exit=True):
+        time.sleep(0.04)
+
+
+@in_conversation
+def inject_streaming_multimodal_chat(tracer):
+    """
+    Streamed, multimodal chat with JSON output, prompt template, compacted
+    history, reasoning and per-modality / cache token usage:
+
+        invoke_agent Document Briefing Assistant
+        |
+        +-- chat gpt-4.1-mini
+    """
+
+    root = start_agent_span(tracer, "Document Briefing Assistant")
+    with trace.use_span(root, end_on_exit=True):
+        generated = start_inference_span(
+            tracer, provider="openai", model="gpt-4.1-mini",
+            operation="chat",
+            input_tokens=210, output_tokens=90, response_id=new_id("stream"),
+            response_model="gpt-4.1-mini", finish_reasons=["stop"],
+            server_address="api.openai.com", server_port=443,
+            input_messages=[
+                {"role": "user", "parts": [{"type": "text", "content":
+                    "Earlier trip discussion (summarized): three days in Paris, vegetarian meals."}]},
+                {"role": "user", "parts": [
+                    {"type": "text", "content": "Summarize this itinerary as JSON."},
+                    {"type": "uri", "modality": "image", "mime_type": "image/png",
+                     "uri": "https://example.com/itinerary.png"},
+                ]},
+            ],
+            output_messages=[{"role": "assistant", "parts": [
+                {"type": "text", "content": '{"destination":"Paris","days":3}'},
+            ]}],
+            extra_attributes={
+                "gen_ai.output.type": "json",
+                "gen_ai.request.stream": True,
+                "gen_ai.response.time_to_first_chunk": 0.18,
+                "gen_ai.prompt.name": "itinerary-brief",
+                "gen_ai.prompt.version": "2.1.0",
+                "gen_ai.prompt.variable.destination": "Paris",
+                "gen_ai.conversation.compacted": True,
+                "gen_ai.request.reasoning.level": "low",
+                "gen_ai.usage.reasoning.output_tokens": 12,
+                "gen_ai.usage.image.input_tokens": 80,
+                "gen_ai.usage.text.input_tokens": 130,
+                "gen_ai.usage.text.output_tokens": 78,
+                "gen_ai.usage.cache_read.input_tokens": 40,
+                "gen_ai.usage.cache_write.input_tokens": 20,
+                "gen_ai.request.top_p": 0.9,
+                "gen_ai.request.seed": 42,
+            },
+        )
+        with trace.use_span(generated, end_on_exit=True):
+            # Must outlast gen_ai.response.time_to_first_chunk.
+            time.sleep(0.25)
+
+
+@in_conversation
+def inject_background_response(tracer):
+    """
+    Background response that is polled until completion. The request and
+    the polls are correlated through gen_ai.response.id:
+
+        invoke_agent Document Briefing Assistant
+        |
+        +-- chat gpt-4.1-mini            (no output yet)
+        +-- fetch_response               (queued)
+        +-- fetch_response               (in_progress)
+        +-- fetch_response               (completed, output + finish reason)
+    """
+
+    response_id = new_id("resp")
+    root = start_agent_span(tracer, "Document Briefing Assistant")
+    with trace.use_span(root, end_on_exit=True):
+        background = start_inference_span(
+            tracer, provider="openai", model="gpt-4.1-mini", operation="chat",
+            response_id=response_id,
+            server_address="api.openai.com", server_port=443,
+            input_messages=[{"role": "user", "parts": [
+                {"type": "text", "content": "Prepare a longer travel summary in the background."},
+            ]}],
+            extra_attributes={"gen_ai.request.stream": True},
+        )
+        with trace.use_span(background, end_on_exit=True):
+            time.sleep(0.04)
+
+        for status, cursor in (("queued", None), ("in_progress", None), ("completed", "event-42")):
+            fetched = start_fetch_response_span(
+                tracer, response_id=response_id, status=status, cursor=cursor,
+                finish_reasons=["stop"] if status == "completed" else None,
+                output_messages=[{"role": "assistant", "parts": [
+                    {"type": "text", "content": "Three days in Paris with vegetarian meal options."},
+                ]}] if status == "completed" else None,
+            )
+            with trace.use_span(fetched, end_on_exit=True):
+                time.sleep(0.04)
+
+
+@in_conversation
+def inject_failed_chat(tracer):
+    """
+    Chat request that times out before any response is produced:
+
+        invoke_agent Document Briefing Assistant
+        |
+        +-- chat gpt-4.1-mini            (ERROR, error.type=timeout)
+    """
+
+    root = start_agent_span(tracer, "Document Briefing Assistant")
+    with trace.use_span(root, end_on_exit=True):
+        failed = start_inference_span(
+            tracer, provider="openai", model="gpt-4.1-mini",
+            input_messages=[{"role": "user", "parts": [
+                {"type": "text", "content": "Revise the briefing."},
+            ]}],
+            server_address="api.openai.com", server_port=443,
+        )
+        with trace.use_span(failed, end_on_exit=True):
+            failed.set_attribute("error.type", "timeout")
+            failed.record_exception(TimeoutError("Response deadline exceeded"))
+            failed.set_status(Status(StatusCode.ERROR, "Response deadline exceeded"))
+
+
+# ---------------------------------------------------------------------------
 # Service setup
 # ---------------------------------------------------------------------------
 
@@ -2074,99 +2422,30 @@ def create_tracer(service_name):
 
 
 def main():
-    print(
-        "Injecting GenAI agent/tool traces into Tempo..."
-    )
-
-    # ------------------------------------------------------------------
-    # Customer support service
-    # ------------------------------------------------------------------
-
-    provider, tracer = create_tracer(
-        "chatbot-api",
-    )
-
-    try:
-        inject_customer_support_agent(
-            tracer,
-        )
-
-        provider.force_flush()
-
-    finally:
-        provider.shutdown()
-
-    print(
-        "Injected: chatbot-api / customer support agent"
-    )
-
-    # ------------------------------------------------------------------
-    # Recommendation service
-    # ------------------------------------------------------------------
-
-    provider, tracer = create_tracer(
-        "recommendation-service",
-    )
-
-    try:
-        inject_recommendation_agent(
-            tracer,
-        )
-
-        provider.force_flush()
-
-    finally:
-        provider.shutdown()
-
-    print(
-        "Injected: recommendation-service / recommendation agent"
-    )
-
-    # ------------------------------------------------------------------
-    # RAG support service
-    # ------------------------------------------------------------------
-
-    provider, tracer = create_tracer(
-        "rag-support-service",
-    )
-
-    try:
-        inject_rag_support_agent(
-            tracer,
-        )
-
-        provider.force_flush()
-
-    finally:
-        provider.shutdown()
-
-    print(
-        "Injected: rag-support-service / RAG support agent"
-    )
-
-    # ------------------------------------------------------------------
-    # Order management service
-    # ------------------------------------------------------------------
-
-    provider, tracer = create_tracer(
-        "order-management-service",
-    )
-
-    try:
-        inject_multi_tool_agent(
-            tracer,
-        )
-
-        provider.force_flush()
-
-    finally:
-        provider.shutdown()
-
-    print(
-        "Injected: order-management-service / multi-tool agent"
-    )
+    print("Injecting GenAI semantic-convention traces into Tempo...")
+    for service_name, scenario in SCENARIOS:
+        provider, tracer = create_tracer(service_name)
+        try:
+            scenario(tracer)
+            provider.force_flush()
+        finally:
+            provider.shutdown()
+        print(f"Injected: {service_name} / {scenario.__name__}")
 
     print("Done.")
+
+
+SCENARIOS = (
+    ("chatbot-api", inject_customer_support_agent),
+    ("recommendation-service", inject_recommendation_agent),
+    ("rag-support-service", inject_rag_support_agent),
+    ("order-management-service", inject_multi_tool_agent),
+    ("travel-preferences-service", inject_memory_workflow),
+    ("title-suggestion-service", inject_legacy_completion),
+    ("document-briefing-service", inject_streaming_multimodal_chat),
+    ("document-briefing-service", inject_background_response),
+    ("document-briefing-service", inject_failed_chat),
+)
 
 
 if __name__ == "__main__":

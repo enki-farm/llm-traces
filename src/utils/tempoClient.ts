@@ -40,6 +40,51 @@ export function isTraceSearchSpanError(span: {
   });
 }
 
+export const CONVERSATION_ID_ATTR = 'gen_ai.conversation.id';
+
+/** Ask Tempo to return gen_ai.conversation.id on matched spans so traces can be correlated. */
+export function withConversationSelect(query: string): string {
+  if (!query || query.includes(`select(span.${CONVERSATION_ID_ATTR})`)) {
+    return query;
+  }
+  return `${query} | select(span.${CONVERSATION_ID_ATTR})`;
+}
+
+export function getTraceConversationId(trace: TempoTraceSearchResult): string | undefined {
+  for (const spanSet of trace.spanSets ?? []) {
+    for (const span of spanSet.spans ?? []) {
+      const attr = span.attributes?.find(
+        (a) => a.key === CONVERSATION_ID_ATTR || a.key === `span.${CONVERSATION_ID_ATTR}`
+      );
+      if (attr?.value?.stringValue) {
+        return attr.value.stringValue;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Order traces so that those sharing a gen_ai.conversation.id are adjacent.
+ * Groups are ordered newest-first by their latest trace; traces within a
+ * conversation are ordered chronologically (turn order).
+ */
+export function groupTracesByConversation(traces: TempoTraceSearchResult[]): TempoTraceSearchResult[] {
+  const start = (t: TempoTraceSearchResult) => BigInt(t.startTimeUnixNano);
+  const groups = new Map<string, TempoTraceSearchResult[]>();
+  for (const trace of traces) {
+    const key = getTraceConversationId(trace) ?? `trace:${trace.traceID}`;
+    const group = groups.get(key);
+    if (group) { group.push(trace); } else { groups.set(key, [trace]); }
+  }
+  const ordered = [...groups.values()].map((group) =>
+    group.sort((a, b) => (start(a) < start(b) ? -1 : start(a) > start(b) ? 1 : 0))
+  );
+  const latest = (group: TempoTraceSearchResult[]) => start(group[group.length - 1]);
+  ordered.sort((a, b) => (latest(b) < latest(a) ? -1 : latest(b) > latest(a) ? 1 : 0));
+  return ordered.flat();
+}
+
 export interface PluginSpan {
   traceId: string;
   spanId: string;
@@ -311,7 +356,7 @@ export async function searchTraces(
 ): Promise<TempoTraceSearchResult[]> {
   const params: Record<string, string | number> = { limit };
   if (query) {
-    params.q = query;
+    params.q = withConversationSelect(query);
   }
   if (start) {
     params.start = Math.floor(start / 1000);

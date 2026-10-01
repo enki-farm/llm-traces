@@ -95,20 +95,49 @@ function getConventionLabel(convention: string): string {
   }
 }
 
+function getFinishReasonSeverity(reason: string): 'ok' | 'warning' | 'error' {
+  const r = reason.toUpperCase();
+  if (r === 'MAX_TOKENS' || r === 'LENGTH' || r === 'CONTENT_FILTER') { return 'warning'; }
+  if (r === 'ERROR') { return 'error'; }
+  return 'ok';
+}
+
 function FinishReasonBadge({ reason }: { reason: string }) {
   const styles = useStyles2(getStyles);
   const r = reason.toUpperCase();
-  const isWarning = r === 'MAX_TOKENS' || r === 'LENGTH' || r === 'CONTENT_FILTER';
-  const isError = r === 'ERROR';
-  const color = isWarning ? '#FF9830' : isError ? '#F2495C' : '#73BF69';
+  const severity = getFinishReasonSeverity(reason);
+  const color = severity === 'warning' ? '#FF9830' : severity === 'error' ? '#F2495C' : '#73BF69';
+  const title = r === 'CONTENT_FILTER'
+    ? 'Response was stopped by a content filter'
+    : severity === 'warning' ? 'Response was cut off due to max token limit' : undefined;
   return (
-    <span
-      className={styles.kindBadge}
-      style={{ background: color }}
-      title={isWarning ? 'Response was cut off due to max token limit' : undefined}
-    >
-      {isWarning && '⚠ '}{r}
+    <span className={styles.kindBadge} style={{ background: color }} title={title}>
+      {severity === 'warning' && '⚠ '}{r}
     </span>
+  );
+}
+
+function FinishReasonCard({ reasons, choiceCount }: { reasons: string[]; choiceCount: number }) {
+  const styles = useStyles2(getStyles);
+  // Per the spec there is one finish reason per choice, so label them when that mapping holds.
+  const perChoice = reasons.length > 1 && reasons.length === choiceCount;
+  const severities = reasons.map(getFinishReasonSeverity);
+  const icon = severities.includes('error') || severities.includes('warning') ? 'exclamation-triangle' : 'check-circle';
+  return (
+    <div className={styles.finishCard} data-testid="finish-reason-card">
+      <div className={styles.finishCardLabel}>
+        <Icon name={icon} size="sm" />
+        <span>{reasons.length > 1 ? 'Finish reasons' : 'Finish reason'}</span>
+      </div>
+      <div className={styles.finishCardReasons}>
+        {reasons.map((reason, i) => (
+          <span key={i} className={styles.finishCardReason}>
+            {perChoice && <span className={styles.finishCardChoice}>Choice {i + 1}</span>}
+            <FinishReasonBadge reason={reason} />
+          </span>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -354,6 +383,13 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
   const dataSourceId = getAttrValue(tags, 'gen_ai.data_source.id');
   const retrievalModel = getAttrValue(tags, 'gen_ai.request.model');
 
+  const memoryOperation = getAttrValue(tags, 'gen_ai.operation.name');
+  const memoryStoreId = getAttrValue(tags, 'gen_ai.memory.store.id');
+  const memoryRecordId = getAttrValue(tags, 'gen_ai.memory.record.id');
+  const memoryRecordCount = getAttrValue(tags, 'gen_ai.memory.record.count');
+  const memoryQuery = getAttrValue(tags, 'gen_ai.memory.query.text');
+  const memoryRecords = getAttrValue(tags, 'gen_ai.memory.records');
+
   // OTel GenAI attributes for RERANKER spans (custom attributes, not in OTel spec yet)
   const rerankerQuery = getAttrValue(tags, 'gen_ai.reranker.query');
   const rerankerModel = getAttrValue(tags, 'gen_ai.reranker.model');
@@ -532,6 +568,47 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
         </div>
       )}
 
+      {kind === 'MEMORY' && (
+        <div className={styles.sectionStack} data-testid="memory-section">
+          <div className={styles.toolMetaRow} data-testid="memory-meta-row">
+            {memoryOperation && (
+              <div className={styles.toolMetaItem}>
+                <span className={styles.toolMetaKey}>Operation:</span>
+                <span className={styles.toolMetaValue}>{memoryOperation.replace(/_/g, ' ')}</span>
+              </div>
+            )}
+            {memoryStoreId && (
+              <div className={styles.toolMetaItem}>
+                <span className={styles.toolMetaKey}>Store:</span>
+                <span className={styles.toolMetaValue}>{memoryStoreId}</span>
+              </div>
+            )}
+            {memoryRecordId && (
+              <div className={styles.toolMetaItem}>
+                <span className={styles.toolMetaKey}>Record:</span>
+                <span className={styles.toolMetaValue}>{memoryRecordId}</span>
+              </div>
+            )}
+            {memoryRecordCount !== undefined && (
+              <div className={styles.toolMetaItem}>
+                <span className={styles.toolMetaKey}>Records:</span>
+                <span className={styles.toolMetaValue}>{memoryRecordCount}</span>
+              </div>
+            )}
+          </div>
+          {memoryQuery && (
+            <CollapsibleSection title="Input" testId="memory-input-section" titleExtra={<CopyButton text={memoryQuery} label="query" />}>
+              <div className={styles.toolCardBlock}>{formatValue(JSON.stringify({ query: memoryQuery }))}</div>
+            </CollapsibleSection>
+          )}
+          {memoryRecords && (
+            <CollapsibleSection title="Records" testId="memory-records-section" titleExtra={<CopyButton text={formatValue(memoryRecords)} label="records" />}>
+              <div className={styles.toolCardBlock}>{formatValue(memoryRecords)}</div>
+            </CollapsibleSection>
+          )}
+        </div>
+      )}
+
       {(kind === 'CHAIN' || kind === 'AGENT' || kind === 'EMBEDDING' || kind === 'UNKNOWN') && (inputValue || outputValue) && (
         <CollapsibleSection title={kind === 'EMBEDDING' ? 'Embedding' : 'Input / Output'} testId="io-section">
           {inputValue && <ValueBlock label="Input" value={inputValue} />}
@@ -570,6 +647,7 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
   const spanKindLabel = llmData.spanKind ?? getSpanKind(tags);
   const kindColor = getSpanKindColor(spanKindLabel);
   const hasIdentifiableModel = llmData.model && llmData.model !== 'unknown';
+  const finishReasons = llmData.finishReasons ?? (llmData.finishReason ? [llmData.finishReason] : []);
 
   return (
     <div className={styles.container} data-testid="llm-span-detail">
@@ -587,7 +665,6 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
         )}
         <span className={styles.conventionBadge}>{getConventionLabel(llmData.convention)}</span>
         {llmData.system && <span className={styles.conventionBadge}>{llmData.system}</span>}
-        {llmData.finishReason && <FinishReasonBadge reason={llmData.finishReason} />}
       </div>
 
       {/* Agent / Provider / Conversation metadata (OTel GenAI) */}
@@ -689,8 +766,15 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
             {llmData.outputMessages.map((msg, i) => (
               <MessageBlock key={`${i}-${msg.role}-${(msg.content ?? '').slice(0, 20)}`} message={msg} />
             ))}
+            {finishReasons.length > 0 && (
+              <FinishReasonCard reasons={finishReasons} choiceCount={llmData.outputMessages.length} />
+            )}
           </div>
         </CollapsibleSection>
+      )}
+
+      {llmData.outputMessages.length === 0 && finishReasons.length > 0 && (
+        <FinishReasonCard reasons={finishReasons} choiceCount={0} />
       )}
 
     </div>

@@ -3,9 +3,13 @@
 
 import {
   flattenTree,
+  getTraceConversationId,
   getTraceDurationMs,
   getTraceStartMs,
+  groupTracesByConversation,
+  withConversationSelect,
   type PluginSpan,
+  type TempoTraceSearchResult,
 } from '../src/utils/tempoClient.ts';
 
 // ---------------------------------------------------------------------------
@@ -236,6 +240,52 @@ describe('BUG-048: self-referencing span is treated as a root (not infinite recu
   assertEquals(flat.length, 1, 'BUG-048: self-referencing span results in single root span');
   assertEquals(flat[0].spanId, 'self', 'BUG-048: self-referencing span has correct spanId');
   assertEquals(flat[0].children.length, 0, 'BUG-048: self-referencing span has no children after fix');
+});
+
+function makeSearchResult(traceID: string, start: number, conversationId?: string): TempoTraceSearchResult {
+  return {
+    traceID,
+    rootServiceName: 'svc',
+    rootTraceName: 'root',
+    startTimeUnixNano: String(start),
+    durationMs: 1,
+    spanSets: [{
+      matched: 1,
+      spans: [{
+        spanID: `${traceID}-span`,
+        startTimeUnixNano: String(start),
+        durationNanos: '1',
+        attributes: conversationId
+          ? [{ key: 'gen_ai.conversation.id', value: { stringValue: conversationId } }]
+          : [],
+      }],
+    }],
+  };
+}
+
+describe('gen_ai.conversation.id correlation', () => {
+  assertEquals(
+    withConversationSelect('{span.gen_ai.operation.name != ""}'),
+    '{span.gen_ai.operation.name != ""} | select(span.gen_ai.conversation.id)',
+    'search query selects the conversation id'
+  );
+  const selected = '{} | select(span.gen_ai.conversation.id)';
+  assertEquals(withConversationSelect(selected), selected, 'select is not appended twice');
+  assertEquals(getTraceConversationId(makeSearchResult('a', 1, 'conv-1')), 'conv-1', 'reads conversation id from span sets');
+  assertEquals(getTraceConversationId(makeSearchResult('a', 1)), undefined, 'missing conversation id is undefined');
+
+  const grouped = groupTracesByConversation([
+    makeSearchResult('solo-old', 10),
+    makeSearchResult('conv1-turn2', 40, 'conv-1'),
+    makeSearchResult('conv2-turn1', 20, 'conv-2'),
+    makeSearchResult('conv1-turn1', 30, 'conv-1'),
+    makeSearchResult('solo-new', 50),
+  ]);
+  assertDeepEquals(
+    grouped.map((t) => t.traceID),
+    ['solo-new', 'conv1-turn1', 'conv1-turn2', 'conv2-turn1', 'solo-old'],
+    'traces of a conversation are adjacent and in turn order'
+  );
 });
 
 // ---------------------------------------------------------------------------
