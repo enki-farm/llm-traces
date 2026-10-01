@@ -11,7 +11,7 @@ Thank you for your interest in contributing! This guide will help you get starte
 ## Development Setup
 
 ```bash
-git clone https://github.com/agoda-com/llm-traces.git
+git clone https://github.com/enki-farm/llm-traces.git
 cd llm-traces
 npm install
 ```
@@ -55,13 +55,13 @@ npm run lint
 
 ## Code Style
 
-- TypeScript with strict mode disabled (legacy — we're working on enabling it)
+- TypeScript with strict mode enabled
 - ESLint enforces bug-catching rules (react-hooks exhaustive-deps, no-unreachable, etc.)
 - No Prettier — formatting is not enforced beyond ESLint rules
 
 ## Reporting Issues
 
-Use [GitHub Issues](https://github.com/agoda-com/llm-traces/issues) for bug reports and feature requests.
+Use [GitHub Issues](https://github.com/enki-farm/llm-traces/issues) for bug reports and feature requests.
 
 ## License
 

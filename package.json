@@ -3,14 +3,14 @@
   "version": "0.0.1",
   "description": "Grafana app plugin for visualizing LLM traces stored in Tempo",
   "license": "Apache-2.0",
-  "author": "Agoda",
+  "author": "enki GmbH",
   "repository": {
     "type": "git",
-    "url": "https://github.com/agoda-com/llm-traces.git"
+    "url": "https://github.com/enki-farm/llm-traces.git"
   },
-  "homepage": "https://github.com/agoda-com/llm-traces",
+  "homepage": "https://github.com/enki-farm/llm-traces",
   "bugs": {
-    "url": "https://github.com/agoda-com/llm-traces/issues"
+    "url": "https://github.com/enki-farm/llm-traces/issues"
   },
   "keywords": [
     "grafana",

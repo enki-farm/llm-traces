@@ -37,7 +37,11 @@ jobs:
         run: |
           PLUGIN_ID=$(node -p "require('./plugin.json').id")
           VERSION="${GITHUB_REF_NAME#v}"
-          cp -r dist "${PLUGIN_ID}"
+          mkdir -p "${PLUGIN_ID}"
+          cp -r dist/. "${PLUGIN_ID}/"
+          test -f "${PLUGIN_ID}/plugin.json"
+          test -f "${PLUGIN_ID}/LICENSE"
+          test -f "${PLUGIN_ID}/NOTICE"
           zip -r "${PLUGIN_ID}-${VERSION}.zip" "${PLUGIN_ID}/"
           sha256sum "${PLUGIN_ID}-${VERSION}.zip" > "${PLUGIN_ID}-${VERSION}.zip.sha256"
           echo "ZIP_NAME=${PLUGIN_ID}-${VERSION}.zip" >> "$GITHUB_ENV"

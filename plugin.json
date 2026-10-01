@@ -8,6 +8,12 @@
     "keywords": ["llm", "traces", "observability", "genai", "otel"],
     "description": "LLM trace visualization for OTel GenAI spans stored in Grafana Tempo",
     "author": { "name": "enki GmbH", "url": "https://github.com/enki-farm" },
+    "links": [
+      { "name": "Project repository", "url": "https://github.com/enki-farm/llm-traces" },
+      { "name": "Documentation", "url": "https://github.com/enki-farm/llm-traces#readme" },
+      { "name": "Issue tracker", "url": "https://github.com/enki-farm/llm-traces/issues" },
+      { "name": "License", "url": "https://github.com/enki-farm/llm-traces/blob/main/LICENSE" }
+    ],
     "logos": { "small": "img/logo.svg", "large": "img/logo.svg" },
     "screenshots": [
       { "name": "LLM Traces", "path": "img/llm-traces-screenshot.png" }

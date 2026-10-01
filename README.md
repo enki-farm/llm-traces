@@ -1,6 +1,6 @@
 # LLM Traces — Grafana Plugin
 
-[![CI](https://github.com/agoda-com/llm-traces/actions/workflows/ci.yml/badge.svg)](https://github.com/agoda-com/llm-traces/actions/workflows/ci.yml)
+[![CI](https://github.com/enki-farm/llm-traces/actions/workflows/ci.yml/badge.svg)](https://github.com/enki-farm/llm-traces/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 
 A Grafana app plugin for visualizing LLM (Large Language Model) traces stored in [Grafana Tempo](https://grafana.com/oss/tempo/).
@@ -23,7 +23,7 @@ Supports OpenTelemetry GenAI semantic conventions out of the box.
 
 | Component | Version |
 |-----------|---------|
-| Grafana | &ge; 11.1.0 |
+| Grafana | &ge; 13.0.0 |
 | Node.js | &ge; 22.6 (for development) |
 | A configured [Tempo](https://grafana.com/docs/tempo/latest/) datasource | |
 
@@ -31,7 +31,7 @@ Supports OpenTelemetry GenAI semantic conventions out of the box.
 
 ### From GitHub Releases (recommended)
 
-1. Download the latest release zip from the [Releases](https://github.com/agoda-com/llm-traces/releases) page
+1. Download the latest release zip from the [Releases](https://github.com/enki-farm/llm-traces/releases) page
 2. Extract it into your Grafana plugins directory:
    ```bash
    unzip llm-traces-app-*.zip -d /var/lib/grafana/plugins/
@@ -109,8 +109,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## Origin and License
 
-This project is a substantially modified continuation of
-Agoda's LLM Traces.
+This project is an enki-maintained fork and substantially modified
+continuation of Agoda's LLM Traces.
 
 The original project was created by Agoda Services Co., Ltd. and
 released under the Apache License 2.0. This project retains and
@@ -123,6 +123,10 @@ We are grateful to the original authors and contributors for the
 foundation this project builds upon.
 
 Copyright 2026 enki GmbH.
+
+Enki provides this software as free and open-source software. Optional
+commercial support and services are offered separately and do not restrict
+the rights granted by the Apache License, Version 2.0.
 
 This project is licensed under the Apache License, Version 2.0.
 See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
