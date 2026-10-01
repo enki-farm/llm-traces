@@ -1,9 +1,9 @@
 /**
  * QA Suite 4 — LLM Span Detail Panel: Model Info, Token Usage, Messages, Params
  *
- * All API calls are mocked with the OpenInference fixture trace (TRACE_RESPONSE),
+ * All API calls are mocked with the OTel GenAI fixture trace (TRACE_RESPONSE),
  * which contains a full LLM span with model name, token counts, and messages.
- * Tests cover the llm-span-detail / oi-span-detail panel comprehensively.
+ * Tests cover the llm-span-detail panel comprehensively.
  */
 
 import { test, expect, Page } from '@playwright/test';

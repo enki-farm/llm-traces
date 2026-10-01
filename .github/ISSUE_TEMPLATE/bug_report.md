@@ -17,7 +17,7 @@ What you expected to happen.
 - Grafana version:
 - Tempo version:
 - Plugin version:
-- Span convention (OpenInference / OTel GenAI / Vertex AI / Generic):
+- Span convention (OTel GenAI / Generic):
 
 **Screenshots**
 If applicable, add screenshots.

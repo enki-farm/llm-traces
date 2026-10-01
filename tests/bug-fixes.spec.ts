@@ -24,11 +24,8 @@ const PLUGIN_URL = '/a/llm-traces-app';
 
 // The LLM filter attributes that must appear in both the editor and the search request.
 const LLM_FILTER_ATTRS = [
-  'span.openinference.span.kind',
   'span.gen_ai.system',
   'span.gen_ai.operation.name',
-  'span.llm.model_name',
-  'span.llm.request.type',
 ];
 
 /**

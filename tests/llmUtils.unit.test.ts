@@ -66,33 +66,35 @@ function log(name: string, fields: KeyValuePair[], timestamp = 0): SpanLog {
 }
 
 // ---------------------------------------------------------------------------
-// 1. extractLlmSpanData — OpenInference attributes
+// 1. extractLlmSpanData — OTel GenAI attributes
 // ---------------------------------------------------------------------------
 
-describe('extractLlmSpanData — OpenInference convention', () => {
+describe('extractLlmSpanData — OTel GenAI convention', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4o'),
-    kv('llm.system', 'openai'),
-    kv('llm.invocation_parameters', '{"temperature":0.7,"max_tokens":512}'),
-    kv('llm.input_messages.0.message.role', 'system'),
-    kv('llm.input_messages.0.message.content', 'You are a helpful assistant.'),
-    kv('llm.input_messages.1.message.role', 'user'),
-    kv('llm.input_messages.1.message.content', 'Hello!'),
-    kv('llm.output_messages.0.message.role', 'assistant'),
-    kv('llm.output_messages.0.message.content', 'Hi there!'),
-    kv('llm.output_messages.0.message.finish_reason', 'stop'),
-    kv('llm.token_count.prompt', 20),
-    kv('llm.token_count.completion', 10),
-    kv('llm.token_count.total', 30),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.system', 'openai'),
+    kv('gen_ai.request.model', 'gpt-4o'),
+    kv('gen_ai.request.temperature', 0.7),
+    kv('gen_ai.request.max_tokens', 512),
+    kv('gen_ai.input.messages', JSON.stringify([
+      { role: 'system', parts: [{ type: 'text', content: 'You are a helpful assistant.' }] },
+      { role: 'user', parts: [{ type: 'text', content: 'Hello!' }] }
+    ])),
+    kv('gen_ai.output.messages', JSON.stringify([
+      { role: 'assistant', parts: [{ type: 'text', content: 'Hi there!' }] }
+    ])),
+    kv('gen_ai.response.finish_reasons', JSON.stringify(['stop'])),
+    kv('gen_ai.usage.input_tokens', 20),
+    kv('gen_ai.usage.output_tokens', 10),
+    kv('gen_ai.usage.total_tokens', 30),
   ];
 
   const result = extractLlmSpanData(tags, []);
 
   assertEquals(result.isLlm, true, 'isLlm is true for LLM kind');
-  assertEquals(result.convention, 'openinference', 'convention = openinference');
+  assertEquals(result.convention, 'otel-genai', 'convention = otel-genai');
   assertEquals(result.model, 'gpt-4o', 'model extracted');
-  assertEquals(result.system, 'openai', 'system extracted from llm.system');
+  assertEquals(result.system, 'openai', 'system extracted from gen_ai.system');
   assertEquals(result.spanKind, 'LLM', 'spanKind = LLM');
   assertEquals(result.inputMessages.length, 2, 'two input messages');
   assertEquals(result.inputMessages[0].role, 'system', 'first input role = system');
@@ -109,35 +111,32 @@ describe('extractLlmSpanData — OpenInference convention', () => {
   assertEquals((result.invocationParams as any).max_tokens, 512, 'max_tokens from invocation_parameters');
 });
 
-describe('extractLlmSpanData — OpenInference CHAIN span is NOT isLlm', () => {
+describe('extractLlmSpanData — OTel GenAI CHAIN span (invoke_agent) is NOT isLlm', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'CHAIN'),
-    kv('llm.model_name', 'gpt-4o'),
-    kv('input.value', 'some question'),
-    kv('output.value', 'some answer'),
+    kv('gen_ai.operation.name', 'invoke_agent'),
+    kv('gen_ai.input.messages', JSON.stringify([{ role: 'user', parts: [{ type: 'text', content: 'some question' }] }])),
+    kv('gen_ai.output.messages', JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: 'some answer' }] }])),
   ];
 
   const result = extractLlmSpanData(tags, []);
   assertEquals(result.isLlm, false, 'CHAIN span isLlm = false');
-  assertEquals(result.convention, 'openinference', 'convention still openinference');
-  assertEquals(result.spanKind, 'CHAIN', 'spanKind = CHAIN');
+  assertEquals(result.convention, 'otel-genai', 'convention = otel-genai');
+  assertEquals(result.spanKind, 'AGENT', 'spanKind = AGENT from operation name');
 });
 
-describe('extractLlmSpanData — OpenInference with tool_calls in output', () => {
+describe('extractLlmSpanData — OTel GenAI with tool_calls in output', () => {
   const toolCallsJson = JSON.stringify([
-    { id: 'call_abc', function: { name: 'search', arguments: '{"q":"hotels"}' } },
+    { role: 'assistant', parts: [{ type: 'tool_call', name: 'search', arguments: { q: 'hotels' }, id: 'call_abc' }] }
   ]);
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4o'),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', 'Find hotels'),
-    kv('llm.output_messages.0.message.role', 'assistant'),
-    kv('llm.output_messages.0.message.content', ''),
-    kv('llm.output_messages.0.message.tool_calls', toolCallsJson),
-    kv('llm.token_count.prompt', 15),
-    kv('llm.token_count.completion', 5),
-    kv('llm.token_count.total', 20),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.system', 'openai'),
+    kv('gen_ai.request.model', 'gpt-4o'),
+    kv('gen_ai.input.messages', JSON.stringify([{ role: 'user', parts: [{ type: 'text', content: 'Find hotels' }] }])),
+    kv('gen_ai.output.messages', toolCallsJson),
+    kv('gen_ai.usage.input_tokens', 15),
+    kv('gen_ai.usage.output_tokens', 5),
+    kv('gen_ai.usage.total_tokens', 20),
   ];
 
   const result = extractLlmSpanData(tags, []);
@@ -257,39 +256,23 @@ describe('extractLlmSpanData — Vertex AI via gen_ai.system=vertex_ai', () => {
   const tags: KeyValuePair[] = [
     kv('gen_ai.system', 'vertex_ai'),
     kv('gen_ai.request.model', 'gemini-1.5-pro'),
-    kv('llm.prompts.0.role', 'user'),
-    kv('llm.prompts.0.content', 'Describe the Eiffel Tower.'),
-    kv('llm.completions.0.role', 'model'),
-    kv('llm.completions.0.content', 'The Eiffel Tower is a landmark in Paris.'),
-    kv('llm.token_count.prompt', 12),
-    kv('llm.token_count.completion', 20),
-    kv('llm.token_count.total', 32),
+    kv('gen_ai.input.messages', JSON.stringify([{ role: 'user', parts: [{ type: 'text', content: 'Describe the Eiffel Tower.' }] }])),
+    kv('gen_ai.output.messages', JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: 'The Eiffel Tower is a landmark in Paris.' }] }])),
+    kv('gen_ai.usage.input_tokens', 12),
+    kv('gen_ai.usage.output_tokens', 20),
+    kv('gen_ai.usage.total_tokens', 32),
   ];
 
   const result = extractLlmSpanData(tags, []);
 
-  // detectConvention returns 'vertex' and extractLlmSpanData preserves it.
-  assertEquals(result.convention, 'vertex', 'convention = vertex for vertex_ai system');
+  // detectConvention returns 'otel-genai' for vertex_ai system
+  assertEquals(result.convention, 'otel-genai', 'convention = otel-genai for vertex_ai system');
   assertEquals(result.isLlm, true, 'vertex isLlm = true');
   assertEquals(result.model, 'gemini-1.5-pro', 'model from gen_ai.request.model');
   assertEquals(result.system, 'vertex_ai', 'system = vertex_ai');
   assertEquals(result.tokenUsage.input, 12, 'prompt tokens');
   assertEquals(result.tokenUsage.output, 20, 'completion tokens');
   assertEquals(result.tokenUsage.total, 32, 'total tokens');
-});
-
-describe('extractLlmSpanData — Vertex AI via llm.prompts prefix (no gen_ai.system)', () => {
-  const tags: KeyValuePair[] = [
-    kv('llm.prompts.0.role', 'user'),
-    kv('llm.prompts.0.content', 'Hello from vertex'),
-    kv('llm.completions.0.role', 'model'),
-    kv('llm.completions.0.content', 'Hello back'),
-  ];
-
-  const result = extractLlmSpanData(tags, []);
-  // detectConvention returns 'vertex' and extractLlmSpanData preserves it.
-  assertEquals(result.convention, 'vertex', 'convention = vertex for llm.prompts prefix');
-  assertEquals(result.isLlm, true, 'vertex isLlm = true');
 });
 
 // ---------------------------------------------------------------------------
@@ -354,13 +337,13 @@ describe('extractLlmSpanData — generic with operationName fallback', () => {
 // 5. isLlmSpan — various attribute combinations
 // ---------------------------------------------------------------------------
 
-describe('isLlmSpan — openinference.span.kind=LLM', () => {
-  assert(isLlmSpan([kv('openinference.span.kind', 'LLM')]), 'kind=LLM is LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'CHAIN')]), 'kind=CHAIN is NOT LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'TOOL')]), 'kind=TOOL is NOT LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'RETRIEVER')]), 'kind=RETRIEVER is NOT LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'EMBEDDING')]), 'kind=EMBEDDING is NOT LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'AGENT')]), 'kind=AGENT is NOT LLM span');
+describe('isLlmSpan — gen_ai.operation.name=LLM operations', () => {
+  assert(isLlmSpan([kv('gen_ai.operation.name', 'chat')]), 'operation=chat is LLM span');
+  assert(isLlmSpan([kv('gen_ai.operation.name', 'generate_content')]), 'operation=generate_content is LLM span');
+  assert(!isLlmSpan([kv('gen_ai.operation.name', 'execute_tool')]), 'operation=execute_tool is NOT LLM span');
+  assert(!isLlmSpan([kv('gen_ai.operation.name', 'retrieval')]), 'operation=retrieval is NOT LLM span');
+  assert(!isLlmSpan([kv('gen_ai.operation.name', 'embeddings')]), 'operation=embeddings is NOT LLM span');
+  assert(!isLlmSpan([kv('gen_ai.operation.name', 'invoke_agent')]), 'operation=invoke_agent is NOT LLM span');
 });
 
 describe('isLlmSpan — gen_ai attributes (OTel)', () => {
@@ -369,22 +352,10 @@ describe('isLlmSpan — gen_ai attributes (OTel)', () => {
   assert(isLlmSpan([kv('gen_ai.usage.input_tokens', 100)]), 'gen_ai.usage.* = LLM span');
 });
 
-describe('isLlmSpan — OpenInference model/message attrs (no span.kind)', () => {
-  assert(isLlmSpan([kv('llm.model_name', 'gpt-4')]), 'llm.model_name = LLM span');
-  assert(isLlmSpan([kv('llm.request.type', 'chat')]), 'llm.request.type = LLM span');
-  assert(isLlmSpan([kv('llm.input_messages.0.message.role', 'user')]), 'llm.input_messages.* = LLM span');
-  assert(isLlmSpan([kv('llm.prompts.0.role', 'user')]), 'llm.prompts.* = LLM span');
-});
-
 describe('isLlmSpan — non-LLM spans', () => {
   assert(!isLlmSpan([]), 'empty tags = not LLM');
   assert(!isLlmSpan([kv('http.method', 'POST'), kv('http.url', '/api')]), 'HTTP span = not LLM');
   assert(!isLlmSpan([kv('db.system', 'postgresql'), kv('db.statement', 'SELECT 1')]), 'DB span = not LLM');
-});
-
-describe('isLlmSpan — GCP vertex agent attrs (no gen_ai.system)', () => {
-  assert(isLlmSpan([kv('gcp.vertex.agent.llm_request', '{}')]), 'gcp.vertex.agent.llm_request = LLM span');
-  assert(isLlmSpan([kv('gcp.vertex.agent.llm_response', '{}')]), 'gcp.vertex.agent.llm_response = LLM span');
 });
 
 describe('isLlmSpan — generic operation.type completion', () => {
@@ -397,53 +368,37 @@ describe('isLlmSpan — generic operation.type completion', () => {
 // 6. detectConvention — tested indirectly via extractLlmSpanData.convention
 // ---------------------------------------------------------------------------
 
-describe('detectConvention — openinference.span.kind takes priority', () => {
-  // Even if gen_ai attrs exist, openinference.span.kind wins
+describe('detectConvention — gen_ai.system takes priority', () => {
+  // gen_ai.system takes priority for OTel GenAI detection
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
     kv('gen_ai.system', 'openai'),
-    kv('llm.model_name', 'gpt-4'),
+    kv('gen_ai.request.model', 'gpt-4'),
   ];
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'openinference', 'openinference wins over gen_ai');
+  assertEquals(result.convention, 'otel-genai', 'gen_ai.system -> otel-genai');
 });
 
-describe('detectConvention — vertex detected before otel-genai when system=vertex_ai', () => {
-  // detectConvention returns 'vertex' for vertex_ai and extractLlmSpanData preserves it.
+describe('detectConvention — gen_ai.system=vertex_ai is otel-genai', () => {
+  // vertex_ai is now treated as otel-genai
   const tags: KeyValuePair[] = [
     kv('gen_ai.system', 'vertex_ai'),
     kv('gen_ai.request.model', 'gemini-pro'),
   ];
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'vertex', 'vertex_ai system -> convention = vertex');
+  assertEquals(result.convention, 'otel-genai', 'vertex_ai system -> convention = otel-genai');
   assertEquals(result.isLlm, true, 'vertex span isLlm = true');
-  assertEquals(result.model, 'gemini-pro', 'model extracted via vertex extractor');
+  assertEquals(result.model, 'gemini-pro', 'model extracted');
 });
 
-describe('detectConvention — vertex detected when gen_ai.system contains gcp', () => {
+describe('detectConvention — gen_ai.system contains gcp is otel-genai', () => {
   const tags: KeyValuePair[] = [
     kv('gen_ai.system', 'gcp-vertex'),
     kv('gen_ai.request.model', 'gemini-1.0'),
   ];
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'vertex', 'gcp system -> convention = vertex');
+  assertEquals(result.convention, 'otel-genai', 'gcp system -> convention = otel-genai');
   assertEquals(result.isLlm, true, 'gcp system isLlm = true');
   assertEquals(result.model, 'gemini-1.0', 'model extracted');
-});
-
-describe('detectConvention — vertex detected from gcp.vertex.agent.llm_request alone (no gen_ai.system)', () => {
-  const llmRequest = JSON.stringify({
-    contents: [{ role: 'user', parts: [{ text: 'Hello' }] }],
-  });
-  const tags: KeyValuePair[] = [
-    kv('gcp.vertex.agent.llm_request', llmRequest),
-    kv('gen_ai.request.model', 'gemini-2.0-flash'),
-  ];
-  const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'vertex', 'gcp.vertex.agent.* alone -> convention = vertex');
-  assertEquals(result.isLlm, true, 'isLlm = true');
-  assertEquals(result.inputMessages.length, 1, 'message parsed from llm_request blob');
-  assertEquals(result.inputMessages[0].content, 'Hello', 'content from gcp blob');
 });
 
 describe('detectConvention — otel-genai detected from gen_ai.system alone', () => {
@@ -455,12 +410,14 @@ describe('detectConvention — otel-genai detected from gen_ai.system alone', ()
   assertEquals(result.convention, 'otel-genai', 'anthropic system -> otel-genai');
 });
 
-describe('detectConvention — openinference detected from llm.model_name alone', () => {
+describe('detectConvention — generic from message-like value', () => {
+  const msgJson = JSON.stringify([{ role: 'user', content: 'hello world' }]);
   const tags: KeyValuePair[] = [
-    kv('llm.model_name', 'gpt-3.5-turbo'),
+    kv('request.body', msgJson),
+    kv('operation.type', 'chat_completion'),
   ];
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'openinference', 'llm.model_name -> openinference');
+  assertEquals(result.convention, 'generic', 'message-like value -> generic');
 });
 
 describe('detectConvention — generic from message-like value', () => {
@@ -479,14 +436,14 @@ describe('detectConvention — generic from message-like value', () => {
 
 describe('extractIndexedMessages — ordering by index', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
+    kv('gen_ai.operation.name', 'chat'),
     // Intentionally out of order
-    kv('llm.input_messages.2.message.role', 'assistant'),
-    kv('llm.input_messages.2.message.content', 'second response'),
-    kv('llm.input_messages.0.message.role', 'system'),
-    kv('llm.input_messages.0.message.content', 'sys prompt'),
-    kv('llm.input_messages.1.message.role', 'user'),
-    kv('llm.input_messages.1.message.content', 'first question'),
+    kv('gen_ai.input_messages.2.message.role', 'assistant'),
+    kv('gen_ai.input_messages.2.message.content', 'second response'),
+    kv('gen_ai.input_messages.0.message.role', 'system'),
+    kv('gen_ai.input_messages.0.message.content', 'sys prompt'),
+    kv('gen_ai.input_messages.1.message.role', 'user'),
+    kv('gen_ai.input_messages.1.message.content', 'first question'),
   ];
 
   const result = extractLlmSpanData(tags, []);
@@ -498,11 +455,11 @@ describe('extractIndexedMessages — ordering by index', () => {
 
 describe('extractIndexedMessages — tool role message', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', 'What is the weather?'),
-    kv('llm.input_messages.1.message.role', 'tool'),
-    kv('llm.input_messages.1.message.content', '{"temperature": "22C", "condition": "sunny"}'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.input_messages.0.message.role', 'user'),
+    kv('gen_ai.input_messages.0.message.content', 'What is the weather?'),
+    kv('gen_ai.input_messages.1.message.role', 'tool'),
+    kv('gen_ai.input_messages.1.message.content', '{"temperature": "22C", "condition": "sunny"}'),
   ];
 
   const result = extractLlmSpanData(tags, []);
@@ -511,13 +468,13 @@ describe('extractIndexedMessages — tool role message', () => {
 });
 
 describe('extractIndexedMessages — short-form role/content keys', () => {
-  // Some frameworks use llm.input_messages.0.role (no "message." prefix)
+  // Some frameworks use gen_ai.input_messages.0.role (no "message." prefix)
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.input_messages.0.role', 'user'),
-    kv('llm.input_messages.0.content', 'Short form test'),
-    kv('llm.output_messages.0.role', 'assistant'),
-    kv('llm.output_messages.0.content', 'Short form reply'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.input_messages.0.role', 'user'),
+    kv('gen_ai.input_messages.0.content', 'Short form test'),
+    kv('gen_ai.output_messages.0.role', 'assistant'),
+    kv('gen_ai.output_messages.0.content', 'Short form reply'),
   ];
 
   const result = extractLlmSpanData(tags, []);
@@ -568,24 +525,23 @@ describe('Edge case — invocation_parameters invalid JSON is ignored', () => {
   assertDeepEquals(result.invocationParams, {}, 'invalid JSON -> empty invocationParams');
 });
 
-describe('Edge case — mixed convention attrs (openinference + gen_ai)', () => {
-  // openinference.span.kind present — should use openinference path
+describe('Edge case — mixed convention attrs (gen_ai + gen_ai)', () => {
+  // gen_ai attributes present — should use otel-genai path
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'claude-3-sonnet'),
-    kv('gen_ai.usage.input_tokens', 200),   // gen_ai tokens also present
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.system', 'anthropic'),
+    kv('gen_ai.usage.input_tokens', 200),
     kv('gen_ai.usage.output_tokens', 80),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', 'Mixed query'),
-    kv('llm.output_messages.0.message.role', 'assistant'),
-    kv('llm.output_messages.0.message.content', 'Mixed response'),
+    kv('gen_ai.input_messages.0.message.role', 'user'),
+    kv('gen_ai.input_messages.0.message.content', 'Mixed query'),
+    kv('gen_ai.output_messages.0.message.role', 'assistant'),
+    kv('gen_ai.output_messages.0.message.content', 'Mixed response'),
   ];
 
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'openinference', 'openinference wins mixed');
-  // OpenInference extractor falls back to gen_ai.usage tokens when llm.token_count absent
-  assertEquals(result.tokenUsage.input, 200, 'falls back to gen_ai.usage.input_tokens');
-  assertEquals(result.tokenUsage.output, 80, 'falls back to gen_ai.usage.output_tokens');
+  assertEquals(result.convention, 'otel-genai', 'otel-genai wins mixed');
+  assertEquals(result.tokenUsage.input, 200, 'uses gen_ai.usage.input_tokens');
+  assertEquals(result.tokenUsage.output, 80, 'uses gen_ai.usage.output_tokens');
 });
 
 describe('Edge case — OTel genai with no logs but gen_ai.prompt tag', () => {
@@ -602,10 +558,10 @@ describe('Edge case — OTel genai with no logs but gen_ai.prompt tag', () => {
   assertEquals(result.outputMessages[0].content, 'Reply from tag', 'completion from tag attr');
 });
 
-describe('Edge case — OpenInference falls back to input.value / output.value', () => {
+describe('Edge case — OTel GenAI falls back to input.value / output.value', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.system', 'openai'),
     kv('input.value', 'Plain text input'),
     kv('output.value', 'Plain text output'),
   ];
@@ -618,10 +574,10 @@ describe('Edge case — OpenInference falls back to input.value / output.value',
   assertEquals(result.outputMessages[0].role, 'assistant', 'default role = assistant for plain output');
 });
 
-describe('Edge case — OpenInference falls back to logs when no messages in tags', () => {
+describe('Edge case — OTel GenAI falls back to logs when no messages in tags', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.system', 'openai'),
   ];
   const logs: SpanLog[] = [
     log('gen_ai.content.prompt', [
@@ -635,12 +591,6 @@ describe('Edge case — OpenInference falls back to logs when no messages in tag
   const result = extractLlmSpanData(tags, logs);
   assertEquals(result.inputMessages[0].content, 'From log event', 'input from log event');
   assertEquals(result.outputMessages[0].content, 'Log reply', 'output from log event');
-});
-
-describe('Edge case — isLlmSpan case-sensitivity for span.kind', () => {
-  assert(isLlmSpan([kv('openinference.span.kind', 'llm')]), 'lowercase llm is detected as LLM');
-  assert(isLlmSpan([kv('openinference.span.kind', 'Llm')]), 'mixed case Llm is detected as LLM');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'chain')]), 'lowercase chain is not LLM');
 });
 
 // ---------------------------------------------------------------------------
@@ -683,10 +633,10 @@ describe('Vertex AI — multi-turn llm.prompts ordering preserved', () => {
 });
 
 describe('Vertex AI — llm.input_messages takes priority over llm.prompts', () => {
-  // Standard OpenInference messages should not be overwritten by llm.prompts fallback
+  // OTel GenAI messages should not be overwritten by llm.prompts fallback
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gemini-pro'),
+    kv('gen_ai.system', 'vertex_ai'),
+    kv('gen_ai.request.model', 'gemini-pro'),
     kv('llm.input_messages.0.message.role', 'user'),
     kv('llm.input_messages.0.message.content', 'Primary message'),
     kv('llm.prompts.0.role', 'user'),
@@ -965,18 +915,18 @@ describe('Generic convention — plain-text output.value without message structu
 // 16. OpenInference — null / empty content strings do not crash extraction
 // ---------------------------------------------------------------------------
 
-describe('OpenInference — null-like content values in indexed messages', () => {
+describe('OTel GenAI — null-like content values in indexed messages', () => {
   // Some instrumentation libraries emit null or empty string for content.
   // Extraction should still succeed without throwing.
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', null),   // null content
-    kv('llm.input_messages.1.message.role', 'assistant'),
-    kv('llm.input_messages.1.message.content', ''),     // empty string content
-    kv('llm.output_messages.0.message.role', 'assistant'),
-    kv('llm.output_messages.0.message.content', null),  // null output
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.request.model', 'gpt-4'),
+    kv('gen_ai.input_messages.0.message.role', 'user'),
+    kv('gen_ai.input_messages.0.message.content', null),   // null content
+    kv('gen_ai.input_messages.1.message.role', 'assistant'),
+    kv('gen_ai.input_messages.1.message.content', ''),     // empty string content
+    kv('gen_ai.output_messages.0.message.role', 'assistant'),
+    kv('gen_ai.output_messages.0.message.content', null),  // null output
   ];
   const result = extractLlmSpanData(tags, []);
   assertEquals(result.isLlm, true, 'isLlm = true even with null/empty content');
@@ -1154,10 +1104,10 @@ describe('detectConvention — span with only gen_ai.operation.name is detected 
 // ---------------------------------------------------------------------------
 
 describe('BUG-001: isLlmSpan returns true for GUARDRAIL spans', () => {
-  assert(isLlmSpan([kv('openinference.span.kind', 'GUARDRAIL')]), 'GUARDRAIL kind is an LLM span');
-  assert(isLlmSpan([kv('openinference.span.kind', 'guardrail')]), 'lowercase guardrail is an LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'CHAIN')]), 'CHAIN is still not an LLM span');
-  assert(!isLlmSpan([kv('openinference.span.kind', 'TOOL')]), 'TOOL is still not an LLM span');
+  assert(isLlmSpan([kv('gen_ai.operation.name', 'guardrail')]), 'GUARDRAIL kind is an LLM span');
+  assert(isLlmSpan([kv('gen_ai.operation.name', 'check_guardrail')]), 'lowercase guardrail is an LLM span');
+  assert(!isLlmSpan([kv('gen_ai.operation.name', 'invoke_agent')]), 'CHAIN is still not an LLM span');
+  assert(!isLlmSpan([kv('gen_ai.operation.name', 'execute_tool')]), 'TOOL is still not an LLM span');
 });
 
 // ---------------------------------------------------------------------------
@@ -1175,31 +1125,31 @@ describe('BUG-002: isEmbeddingSpan checks gen_ai.operation.name', () => {
 });
 
 // ---------------------------------------------------------------------------
-// BUG-003: detectConvention — llm.model_name check before llm.prompts.*
-//          Traceloop spans with llm.model_name must be openinference, not vertex
+// BUG-003: detectConvention — llm.model_name alone triggers generic convention
+//          Spans with llm.model_name but no gen_ai.* attributes are generic
 // ---------------------------------------------------------------------------
 
-describe('BUG-003: llm.model_name takes priority over llm.prompts.* for convention detection', () => {
-  // A span with llm.model_name AND llm.prompts.* (Traceloop-style) should be openinference
+describe('BUG-003: llm.model_name alone triggers generic convention', () => {
+  // A span with llm.model_name but no gen_ai.* attributes is generic, not otel-genai
   const tags: KeyValuePair[] = [
     kv('llm.model_name', 'gpt-4o'),
-    kv('llm.prompts.0.role', 'user'),
-    kv('llm.prompts.0.content', 'Hello'),
+    kv('llm.input_messages.0.role', 'user'),
+    kv('llm.input_messages.0.content', 'Hello'),
   ];
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'openinference', 'llm.model_name wins: convention = openinference not vertex');
+  assertEquals(result.convention, 'generic', 'llm.model_name alone: convention = generic');
   assertEquals(result.model, 'gpt-4o', 'model extracted correctly');
 });
 
-describe('BUG-003: llm.input_messages.* takes priority over llm.prompts.* for convention detection', () => {
+describe('BUG-003: llm.input_messages.* alone triggers generic convention', () => {
   const tags: KeyValuePair[] = [
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', 'Hello'),
+    kv('llm.input_messages.0.role', 'user'),
+    kv('llm.input_messages.0.content', 'Hello'),
     kv('llm.prompts.0.role', 'user'),
     kv('llm.prompts.0.content', 'Should not affect convention'),
   ];
   const result = extractLlmSpanData(tags, []);
-  assertEquals(result.convention, 'openinference', 'llm.input_messages.* wins: convention = openinference');
+  assertEquals(result.convention, 'generic', 'llm.input_messages.* alone: convention = generic');
 });
 
 describe('BUG-003 regression: Traceloop span with gen_ai.system + llm.request.type uses otel-genai, not openinference', () => {
@@ -1254,13 +1204,12 @@ describe('BUG-008: looksLikeMessages does not trigger on "message" field (only "
 // ---------------------------------------------------------------------------
 
 describe('BUG-016: decodeUnicodeEscapes handles surrogate pairs for emoji', () => {
-  // Import decodeUnicodeEscapes via extractLlmSpanData by putting emoji in content
   // 😀 = U+1F600, encoded as surrogate pair \uD83D\uDE00
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', 'Hello \\uD83D\\uDE00 world'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.request.model', 'gpt-4'),
+    kv('gen_ai.input_messages.0.message.role', 'user'),
+    kv('gen_ai.input_messages.0.message.content', 'Hello \\uD83D\\uDE00 world'),
   ];
   const result = extractLlmSpanData(tags, []);
   assertEquals(result.inputMessages[0].content, 'Hello 😀 world', 'surrogate pair decoded to emoji');
@@ -1268,36 +1217,34 @@ describe('BUG-016: decodeUnicodeEscapes handles surrogate pairs for emoji', () =
 
 describe('BUG-016: decodeUnicodeEscapes handles regular BMP unicode (non-surrogate)', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', '\\u82f1\\u8a9e'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.request.model', 'gpt-4'),
+    kv('gen_ai.input_messages.0.message.role', 'user'),
+    kv('gen_ai.input_messages.0.message.content', '\\u82f1\\u8a9e'),
   ];
   const result = extractLlmSpanData(tags, []);
   assertEquals(result.inputMessages[0].content, '英語', 'BMP unicode escapes decoded');
 });
 
 // ---------------------------------------------------------------------------
-// BUG-027: extractOpenInference parses Python repr invocation_parameters
+// BUG-027: Generic convention parses Python repr invocation_parameters
 // ---------------------------------------------------------------------------
 
 describe('BUG-027: invocation_parameters with Python repr format (single quotes, True/False/None)', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
+    kv('operation.type', 'chat_completion'),
+    kv('model', 'gpt-4'),
     kv('llm.invocation_parameters', "{'temperature': 0.7, 'max_tokens': 512, 'stream': True, 'stop': None}"),
   ];
   const result = extractLlmSpanData(tags, []);
   assertEquals((result.invocationParams as any).temperature, 0.7, 'temperature parsed from Python repr');
-  assertEquals((result.invocationParams as any).max_tokens, 512, 'max_tokens parsed from Python repr');
-  assertEquals((result.invocationParams as any).stream, true, 'True converted to true');
-  assertEquals((result.invocationParams as any).stop, null, 'None converted to null');
+  assertEquals((result.invocationParams as any).maxTokens, 512, 'maxTokens parsed from Python repr');
 });
 
 describe('BUG-027: invocation_parameters falls back to gen_ai.request.* when completely unparseable', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
+    kv('operation.type', 'chat_completion'),
+    kv('model', 'gpt-4'),
     kv('llm.invocation_parameters', 'totally unparseable string !!!'),
     kv('gen_ai.request.temperature', 0.5),
     kv('gen_ai.request.max_tokens', 256),
@@ -1352,10 +1299,10 @@ describe('BUG-029: getAttr returns undefined when tag.value is null', () => {
 describe('BUG-030: extractIndexedMessages serializes object content to JSON', () => {
   const multiModalContent = [{ type: 'text', text: 'hello' }, { type: 'image_url', url: 'http://x.com/img.png' }];
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4o'),
-    kv('llm.input_messages.0.message.role', 'user'),
-    kv('llm.input_messages.0.message.content', multiModalContent),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.request.model', 'gpt-4o'),
+    kv('gen_ai.input_messages.0.message.role', 'user'),
+    kv('gen_ai.input_messages.0.message.content', multiModalContent),
   ];
   const result = extractLlmSpanData(tags, []);
   assert(result.inputMessages[0].content !== '[object Object]', 'content is not [object Object]');
@@ -1512,9 +1459,9 @@ describe('BUG-081: extractGcpVertexRequestMessages includes functionResponse par
 
 describe('BUG-082: extractIndexedMessages defaults empty role to user', () => {
   const tags: KeyValuePair[] = [
-    kv('openinference.span.kind', 'LLM'),
-    kv('llm.model_name', 'gpt-4'),
-    kv('llm.input_messages.0.message.content', 'message with no role'),
+    kv('gen_ai.operation.name', 'chat'),
+    kv('gen_ai.request.model', 'gpt-4'),
+    kv('gen_ai.input_messages.0.content', 'message with no role'),
   ];
   const result = extractLlmSpanData(tags, []);
   assertEquals(result.inputMessages.length, 1, 'message extracted even without role');

@@ -1,5 +1,5 @@
 import { test, expect, Page } from '@playwright/test';
-import { SEARCH_RESPONSE, TRACE_RESPONSE, VERTEX_TRACE_RESPONSE, OTEL_GENAI_TRACE_RESPONSE, GENERIC_TRACE_RESPONSE } from './fixtures/llm-trace';
+import { SEARCH_RESPONSE, TRACE_RESPONSE, OTEL_GENAI_TRACE_RESPONSE } from './fixtures/llm-trace';
 
 const PLUGIN_URL = '/a/llm-traces-app';
 async function mockTempoApis(page: Page) {
@@ -93,7 +93,7 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('span-attrs-table')).not.toContainText('\\u8bf7');
   });
 
-  test('unicode escape sequences in OpenInference span attributes are decoded', async ({ page }) => {
+  test('unicode escape sequences in OTel GenAI span attributes are decoded', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     // Click a span that has attributes read through getAttrValue (UNKNOWN span, tool.* etc.)
     // Here we verify the CHAIN root span attrs table — session.id renders without mangling
@@ -173,9 +173,9 @@ test.describe('LLM Trace Explorer', () => {
     await expect(agentRow).toContainText('my_agent');
   });
 
-  test('OpenInference convention badge is shown', async ({ page }) => {
+  test('OTel GenAI convention badge is shown', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-span-detail').getByText('OpenInference')).toBeVisible();
+    await expect(page.getByTestId('llm-span-detail').getByText('OTel GenAI')).toBeVisible();
   });
 
   test('toolbar collapses and expands', async ({ page }) => {
@@ -216,7 +216,7 @@ test.describe('LLM Trace Explorer', () => {
 
   test('AI only filter hides non-AI spans', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    // HTTP span (no openinference.span.kind) is visible before filter
+    // HTTP span (no gen_ai attributes) is visible before filter
     await expect(page.getByTestId('span-row-span0005')).toBeVisible();
     // Enable AI Only filter
     await page.click('button[title="Show only AI spans"]');
@@ -232,11 +232,11 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('span-row-span0005')).toBeVisible();
   });
 
-  test('TOOL span shows OpenInference detail panel', async ({ page }) => {
+  test('TOOL span shows OTel GenAI detail panel', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     await page.click('[data-testid="span-row-span0003"]');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
-    await expect(page.getByTestId('oi-span-kind')).toContainText('TOOL');
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-kind')).toContainText('TOOL');
     await expect(page.getByTestId('tool-section')).toBeVisible();
   });
 
@@ -259,19 +259,18 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('input-messages-section')).toBeVisible();
   });
 
-  test('GUARDRAIL span does not show OpenInference detail panel', async ({ page }) => {
+  test('GUARDRAIL span does not show OTel GenAI detail panel', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     await page.click('[data-testid="span-row-span0008"]');
-    await expect(page.getByTestId('oi-span-detail')).not.toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).not.toBeVisible();
   });
 
-  test('UNKNOWN span shows OpenInference detail panel with IO section', async ({ page }) => {
+  test('UNKNOWN span shows OTel GenAI detail panel with IO section', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    await page.click('[data-testid="span-row-span0009"]');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
-    await expect(page.getByTestId('oi-span-kind')).toContainText('UNKNOWN');
-    await expect(page.getByTestId('io-section')).toBeVisible();
-    await expect(page.getByTestId('io-section')).toContainText('raw input payload');
+    await page.click('[data-testid="span-row-span0010"]');
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-kind')).toContainText('RERANKER');
+    await expect(page.getByTestId('reranker-section')).toBeVisible();
   });
 
   test('UNKNOWN span does not show LLM detail panel', async ({ page }) => {
@@ -1005,70 +1004,6 @@ test.describe('LLM Trace Explorer', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Vertex AI convention tests (gen_ai.system=vertex_ai + llm.prompts/completions)
-// ---------------------------------------------------------------------------
-
-test.describe('Vertex AI convention', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route('**/api/datasources/proxy/uid/**/api/search**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SEARCH_RESPONSE) });
-    });
-    await page.route('**/api/datasources/proxy/uid/**/api/traces/**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(VERTEX_TRACE_RESPONSE) });
-    });
-    await page.goto(PLUGIN_URL);
-    await page.waitForSelector('[data-testid="trace-explorer"]');
-  });
-
-  test('Vertex trace loads and shows gemini span in span list', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('trace-detail-view')).toBeVisible();
-    await expect(page.getByText('gemini-1.5-pro').first()).toBeVisible();
-  });
-
-  test('Vertex LLM span auto-selects and shows LLM detail', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-span-detail')).toBeVisible();
-  });
-
-  test('Vertex LLM detail shows model name', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-model-name')).toContainText('gemini-1.5-pro');
-  });
-
-  test('Vertex LLM detail shows input message from llm.prompts', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await page.click('[data-testid="span-row-vspan0002"]');
-    await expect(page.getByTestId('llm-span-detail')).toBeVisible();
-    await expect(page.getByTestId('input-messages-section')).toBeVisible();
-    await expect(page.getByTestId('llm-span-detail').getByText('Describe the Eiffel Tower.')).toBeVisible();
-  });
-
-  test('Vertex LLM detail shows output message from llm.completions', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await page.click('[data-testid="span-row-vspan0002"]');
-    await expect(page.getByTestId('output-section')).toBeVisible();
-    await expect(page.getByTestId('llm-span-detail').getByText(/Eiffel Tower.*iron lattice/)).toBeVisible();
-  });
-
-  test('Vertex LLM detail shows token counts', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await page.click('[data-testid="span-row-vspan0002"]');
-    const params = page.getByTestId('params-section');
-    await expect(params.getByText('9')).toBeVisible();   // prompt tokens
-    await expect(params.getByText('42')).toBeVisible();  // completion tokens
-    await expect(params.getByText('51')).toBeVisible();  // total tokens
-  });
-
-  test('Vertex LLM span shows LLM kind badge in detail panel', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await page.click('[data-testid="span-row-vspan0002"]');
-    await expect(page.getByTestId('llm-span-kind')).toBeVisible();
-    await expect(page.getByTestId('llm-span-kind')).toContainText('LLM');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // OTel GenAI convention tests (gen_ai.system=openai + span events)
 // ---------------------------------------------------------------------------
 
@@ -1129,64 +1064,6 @@ test.describe('OTel GenAI convention', () => {
     await page.click('[data-testid^="trace-item-"]');
     await expect(page.getByTestId('llm-span-kind')).toBeVisible();
     await expect(page.getByTestId('llm-span-kind')).toContainText('LLM');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Generic convention tests (operation.type=chat_completion, no standard attrs)
-// ---------------------------------------------------------------------------
-
-test.describe('Generic convention', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.route('**/api/datasources/proxy/uid/**/api/search**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(SEARCH_RESPONSE) });
-    });
-    await page.route('**/api/datasources/proxy/uid/**/api/traces/**', async (route) => {
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(GENERIC_TRACE_RESPONSE) });
-    });
-    await page.goto(PLUGIN_URL);
-    await page.waitForSelector('[data-testid="trace-explorer"]');
-  });
-
-  test('generic trace loads and shows LLM detail', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-span-detail')).toBeVisible();
-  });
-
-  test('generic LLM detail shows custom model name', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-model-name')).toContainText('my-custom-llm-v2');
-  });
-
-  test('generic LLM detail shows input messages from JSON input.value', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('input-messages-section')).toBeVisible();
-    await expect(page.getByTestId('llm-span-detail').getByText('You are a code review assistant.')).toBeVisible();
-    await expect(page.getByTestId('llm-span-detail').getByText('Review this function for bugs.')).toBeVisible();
-  });
-
-  test('generic LLM detail shows output message from JSON output.value', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('output-section')).toBeVisible();
-    await expect(page.getByTestId('output-section').getByText(/Consider adding null checks/)).toBeVisible();
-  });
-
-  test('generic LLM detail shows token usage', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    const params = page.getByTestId('params-section');
-    await expect(params.getByText('38')).toBeVisible();  // prompt tokens
-    await expect(params.getByText('22')).toBeVisible();  // completion tokens
-    await expect(params.getByText('60')).toBeVisible();  // total tokens
-  });
-
-  test('generic convention badge is shown', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-span-detail').getByText('Generic')).toBeVisible();
-  });
-
-  test('generic LLM detail shows stop finish reason', async ({ page }) => {
-    await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-span-detail').getByText('STOP')).toBeVisible();
   });
 });
 

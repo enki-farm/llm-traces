@@ -16,7 +16,6 @@
     "grafana",
     "llm",
     "traces",
-    "openinference",
     "observability",
     "genai",
     "otel",

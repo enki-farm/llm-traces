@@ -77,7 +77,7 @@ const ATTR_VALUE_PATTERN = /("(?:\\.|[^\\"])*")|(\w+)/g;
 // ---------------------------------------------------------------------------
 
 const LLM_FILTER_CONDITIONS =
-  'span.openinference.span.kind != "" || span.gen_ai.system != "" || span.gen_ai.operation.name != "" || span.llm.model_name != "" || span.llm.request.type != ""';
+  'span.gen_ai.system != "" || span.gen_ai.operation.name != ""';
 
 const STANDALONE_QUERY = `{${LLM_FILTER_CONDITIONS}}`;
 const STANDALONE_BODY  = LLM_FILTER_CONDITIONS; // content between { }
@@ -102,7 +102,7 @@ assertEquals(
 
 // 2. Confirm the match covers the first attribute name
 assert(
-  (standaloneMatch?.[0] ?? '').startsWith('span.openinference.span.kind'),
+  (standaloneMatch?.[0] ?? '').startsWith('span.gen_ai.system'),
   'filter match begins with the first LLM attribute name'
 );
 
@@ -130,11 +130,8 @@ assertEquals(
 
 // 5. Each LLM filter attribute must be recognised as an attr-name token.
 const LLM_ATTRS = [
-  'span.openinference.span.kind',
   'span.gen_ai.system',
   'span.gen_ai.operation.name',
-  'span.llm.model_name',
-  'span.llm.request.type',
 ];
 for (const attr of LLM_ATTRS) {
   ATTR_NAME_PATTERN.lastIndex = 0;

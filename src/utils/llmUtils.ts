@@ -172,6 +172,30 @@ function extractContentFromParts(parts: unknown[]): string {
   return textParts.join('\n');
 }
 
+/**
+ * Extract tool calls from an OTel GenAI-style parts array.
+ * Returns undefined if no tool calls are found.
+ */
+function extractToolCallsFromParts(parts: unknown[]): LlmToolCall[] | undefined {
+  if (!Array.isArray(parts)) {
+    return undefined;
+  }
+  const toolCalls: LlmToolCall[] = [];
+  for (const part of parts) {
+    if (!isRecord(part)) {
+      continue;
+    }
+    if (String(part.type ?? '') === 'tool_call') {
+      toolCalls.push({
+        name: String(part.name ?? 'unknown'),
+        arguments: part.arguments ? JSON.stringify(part.arguments) : '',
+        id: part.id ? String(part.id) : undefined,
+      });
+    }
+  }
+  return toolCalls.length > 0 ? toolCalls : undefined;
+}
+
 function extractMessagesFromJsonValue(value: string): LlmMessage[] {
   try {
     const parsed = JSON.parse(value);
@@ -184,7 +208,7 @@ function extractMessagesFromJsonValue(value: string): LlmMessage[] {
             return {
               role: String(m.role || m['message.role'] || 'unknown'),
               content: extractContentFromParts(m.parts),
-              toolCalls: normalizeToolCalls(m.tool_calls),
+              toolCalls: extractToolCallsFromParts(m.parts) ?? normalizeToolCalls(m.tool_calls),
             };
           }
           // Legacy flat format: {"role":"user","content":"..."}
@@ -206,7 +230,7 @@ function extractMessagesFromJsonValue(value: string): LlmMessage[] {
               return {
                 role: String(m.role || m['message.role'] || 'unknown'),
                 content: extractContentFromParts(m.parts),
-                toolCalls: normalizeToolCalls(m.tool_calls),
+                toolCalls: extractToolCallsFromParts(m.parts) ?? normalizeToolCalls(m.tool_calls),
               };
             }
             // Legacy flat format
@@ -224,7 +248,7 @@ function extractMessagesFromJsonValue(value: string): LlmMessage[] {
           return [{
             role: String(msg.role),
             content: extractContentFromParts(msg.parts),
-            toolCalls: normalizeToolCalls(msg.tool_calls),
+            toolCalls: extractToolCallsFromParts(msg.parts) ?? normalizeToolCalls(msg.tool_calls),
           }];
         }
         // Legacy flat format
@@ -434,6 +458,10 @@ function detectConvention(tags: KeyValuePair[]): LlmConvention | null {
   if (genAiSystem || tags.some((t) => t.key.startsWith('gen_ai.'))) {
     return 'otel-genai';
   }
+  // Generic convention: llm.* attributes without gen_ai.* attributes
+  if (tags.some((t) => t.key.startsWith('llm.'))) {
+    return 'generic';
+  }
   const hasCompletionType = tags.some(
     (t) => (t.key.endsWith('.operation.type') || t.key === 'operation.type') && String(t.value).toLowerCase().includes('completion')
   );
@@ -442,156 +470,6 @@ function detectConvention(tags: KeyValuePair[]): LlmConvention | null {
     return 'generic';
   }
   return null;
-}
-
-function extractOpenInference(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanData, 'isLlm'> {
-  const model = getAttr(tags, 'gen_ai.response.model') || getAttr(tags, 'llm.model_name') || getAttr(tags, 'gen_ai.request.model') || 'unknown';
-  const spanKind = getAttr(tags, 'openinference.span.kind');
-
-  // Agent attributes (OTel GenAI spec + modern OpenInference ≥ 1.4)
-  const agentName = getAttr(tags, 'gen_ai.agent.name');
-  const agentId = getAttr(tags, 'gen_ai.agent.id');
-  const agentVersion = getAttr(tags, 'gen_ai.agent.version');
-
-  // Provider attribute (OTel GenAI spec)
-  const provider = getAttr(tags, 'gen_ai.provider.name');
-
-  // Conversation ID (OTel GenAI spec)
-  const conversationId = getAttr(tags, 'gen_ai.conversation.id');
-
-  // Response ID (OTel GenAI spec)
-  const responseId = getAttr(tags, 'gen_ai.response.id');
-
-  // System instructions — structured array format
-  let systemInstructions: string[] | undefined;
-  const sysInstrRaw = getAttr(tags, 'gen_ai.system_instructions');
-  if (sysInstrRaw) {
-    try {
-      const parsed = JSON.parse(sysInstrRaw);
-      if (Array.isArray(parsed)) {
-        systemInstructions = parsed
-          .filter((item: unknown) => isRecord(item) && item.content !== undefined)
-          .map((item: Record<string, unknown>) => String(item.content ?? ''));
-      }
-    } catch {
-      // not valid JSON — fall through to legacy gen_ai.system
-    }
-  }
-
-  let inputMessages = extractIndexedMessages(tags, 'llm.input_messages.');
-  if (inputMessages.length === 0) {
-    inputMessages = extractIndexedMessages(tags, 'llm.prompts.');
-  }
-  if (inputMessages.length === 0) {
-    const genAiInput = getAttr(tags, 'gen_ai.input_messages');
-    if (genAiInput) {
-      inputMessages = extractMessagesFromJsonValue(genAiInput);
-    }
-  }
-  if (inputMessages.length === 0) {
-    const gcpReq = getAttr(tags, 'gcp.vertex.agent.llm_request');
-    if (gcpReq) {
-      inputMessages = extractGcpVertexRequestMessages(gcpReq);
-    }
-  }
-  let outputMessages = extractIndexedMessages(tags, 'llm.output_messages.');
-  if (outputMessages.length === 0) {
-    outputMessages = extractIndexedMessages(tags, 'llm.completions.');
-  }
-  if (outputMessages.length === 0) {
-    const genAiOutput = getAttr(tags, 'gen_ai.output_messages');
-    if (genAiOutput) {
-      outputMessages = extractMessagesFromJsonValue(genAiOutput);
-    }
-  }
-  if (outputMessages.length === 0) {
-    const gcpResp = getAttr(tags, 'gcp.vertex.agent.llm_response');
-    if (gcpResp) {
-      outputMessages = extractGcpVertexResponseMessages(gcpResp);
-    }
-  }
-  if (inputMessages.length === 0) {
-    const inputValue = getAttr(tags, 'input.value');
-    if (inputValue) {
-      inputMessages = extractMessagesFromJsonValue(inputValue);
-      if (inputMessages.length === 0 && inputValue.trim()) {
-        inputMessages = [{ role: 'user', content: inputValue }];
-      }
-    }
-  }
-  if (outputMessages.length === 0) {
-    const outputValue = getAttr(tags, 'output.value');
-    if (outputValue) {
-      outputMessages = extractMessagesFromJsonValue(outputValue);
-      if (outputMessages.length === 0 && outputValue.trim()) {
-        outputMessages = [{ role: 'assistant', content: outputValue }];
-      }
-    }
-  }
-  if (inputMessages.length === 0 && outputMessages.length === 0 && logs.length > 0) {
-    const fromEvents = extractMessagesFromEvents(logs);
-    inputMessages = fromEvents.input;
-    outputMessages = fromEvents.output;
-  }
-  let invocationParams: LlmInvocationParams = {};
-  const invParamsStr = getAttr(tags, 'llm.invocation_parameters');
-  if (invParamsStr) {
-    let parsed = false;
-    try {
-      invocationParams = JSON.parse(invParamsStr);
-      parsed = true;
-    } catch {
-      // try Python repr format: single quotes, True/False/None
-    }
-    if (!parsed) {
-      try {
-        const normalized = invParamsStr
-          .replace(/'/g, '"')
-          .replace(/\bTrue\b/g, 'true')
-          .replace(/\bFalse\b/g, 'false')
-          .replace(/\bNone\b/g, 'null');
-        invocationParams = JSON.parse(normalized);
-        parsed = true;
-      } catch {
-        // fall through to individual gen_ai.request.* attributes
-      }
-    }
-    if (!parsed) {
-      const temp = getNumAttr(tags, 'gen_ai.request.temperature');
-      const maxTok = getNumAttr(tags, 'gen_ai.request.max_tokens');
-      const topP = getNumAttr(tags, 'gen_ai.request.top_p');
-      if (temp !== undefined) invocationParams.temperature = temp;
-      if (maxTok !== undefined) invocationParams.maxTokens = maxTok;
-      if (topP !== undefined) invocationParams.topP = topP;
-    }
-  }
-  const finishReason = getAttr(tags, 'llm.output_messages.0.message.finish_reason')
-    ?? getAttr(tags, 'output.finish_reason')
-    ?? getAttr(tags, 'llm.stop_reason');
-  const precomputedCostUsd = getNumAttr(tags, 'gen_ai.cost.total_cost');
-  return {
-    convention: 'openinference',
-    spanKind,
-    model,
-    agentName,
-    agentId,
-    agentVersion,
-    provider,
-    conversationId,
-    systemInstructions,
-    system: getAttr(tags, 'gen_ai.system') || getAttr(tags, 'llm.system'),
-    inputMessages,
-    outputMessages,
-    tokenUsage: {
-      input: getNumAttr(tags, 'llm.token_count.prompt') ?? getNumAttr(tags, 'gen_ai.usage.input_tokens') ?? getNumAttr(tags, 'llm.usage.prompt_tokens'),
-      output: getNumAttr(tags, 'llm.token_count.completion') ?? getNumAttr(tags, 'gen_ai.usage.output_tokens') ?? getNumAttr(tags, 'llm.usage.completion_tokens'),
-      total: getNumAttr(tags, 'llm.token_count.total') ?? getNumAttr(tags, 'gen_ai.usage.total_tokens') ?? getNumAttr(tags, 'llm.usage.total_tokens'),
-    },
-    invocationParams,
-    finishReason,
-    ...(responseId ? { responseId } : {}),
-    ...(precomputedCostUsd !== undefined ? { precomputedCostUsd } : {}),
-  };
 }
 
 function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanData, 'isLlm'> {
@@ -662,6 +540,37 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     // Traceloop flat-indexed format: gen_ai.prompt.{i}.role / gen_ai.prompt.{i}.content
     inputMessages.push(...extractIndexedMessages(tags, 'gen_ai.prompt.'));
   }
+  if (inputMessages.length === 0) {
+    // OTel GenAI flat-indexed format: gen_ai.input_messages.{i}.role / gen_ai.input_messages.{i}.content
+    inputMessages.push(...extractIndexedMessages(tags, 'gen_ai.input_messages.'));
+  }
+  if (inputMessages.length === 0) {
+    // Fallback: input.value as plain text
+    const inputValue = getAttr(tags, 'input.value');
+    if (inputValue) {
+      const parsed = extractMessagesFromJsonValue(inputValue);
+      if (parsed.length > 0) {
+        inputMessages.push(...parsed);
+      } else if (inputValue.trim()) {
+        inputMessages.push({ role: 'user', content: inputValue });
+      }
+    }
+  }
+  if (inputMessages.length === 0) {
+    // Vertex AI / legacy flat-indexed format: llm.input_messages.{i}.role / llm.input_messages.{i}.content
+    inputMessages.push(...extractIndexedMessages(tags, 'llm.input_messages.'));
+  }
+  if (inputMessages.length === 0) {
+    // Vertex AI / legacy flat-indexed format: llm.prompts.{i}.role / llm.prompts.{i}.content
+    inputMessages.push(...extractIndexedMessages(tags, 'llm.prompts.'));
+  }
+  if (inputMessages.length === 0) {
+    // GCP Vertex AI JSON blob: gcp.vertex.agent.llm_request with contents array
+    const gcpReq = getAttr(tags, 'gcp.vertex.agent.llm_request');
+    if (gcpReq) {
+      inputMessages.push(...extractGcpVertexRequestMessages(gcpReq));
+    }
+  }
 
   // ── Output messages — OTel GenAI semantic conventions ─────────────────────
   if (outputMessages.length === 0) {
@@ -689,6 +598,33 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     // Traceloop flat-indexed format: gen_ai.completion.{i}.role / gen_ai.completion.{i}.content
     outputMessages.push(...extractIndexedMessages(tags, 'gen_ai.completion.'));
   }
+  if (outputMessages.length === 0) {
+    // OTel GenAI flat-indexed format: gen_ai.output_messages.{i}.role / gen_ai.output_messages.{i}.content
+    outputMessages.push(...extractIndexedMessages(tags, 'gen_ai.output_messages.'));
+  }
+  if (outputMessages.length === 0) {
+    // Fallback: output.value as plain text
+    const outputValue = getAttr(tags, 'output.value');
+    if (outputValue) {
+      const parsed = extractMessagesFromJsonValue(outputValue);
+      if (parsed.length > 0) {
+        outputMessages.push(...parsed);
+      } else if (outputValue.trim()) {
+        outputMessages.push({ role: 'assistant', content: outputValue });
+      }
+    }
+  }
+  if (outputMessages.length === 0) {
+    // Vertex AI / legacy flat-indexed format: llm.completions.{i}.role / llm.completions.{i}.content
+    outputMessages.push(...extractIndexedMessages(tags, 'llm.completions.'));
+  }
+  if (outputMessages.length === 0) {
+    // GCP Vertex AI JSON blob: gcp.vertex.agent.llm_response with candidates array
+    const gcpResp = getAttr(tags, 'gcp.vertex.agent.llm_response');
+    if (gcpResp) {
+      outputMessages.push(...extractGcpVertexResponseMessages(gcpResp));
+    }
+  }
 
   const finishReasonsRaw = getAttr(tags, 'gen_ai.response.finish_reasons');
   let finishReasonFromArray: string | undefined;
@@ -702,6 +638,9 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     ?? finishReasonFromArray
     ?? getAttr(tags, 'gen_ai.finish_reason');
   const precomputedCostUsd = getNumAttr(tags, 'gen_ai.cost.total_cost');
+  const spanKind = getAttr(tags, 'gen_ai.operation.name')
+    ? OTEL_OPERATION_TO_KIND[getAttr(tags, 'gen_ai.operation.name')!.toLowerCase()]
+    : undefined;
   return {
     convention: 'otel-genai',
     model,
@@ -712,6 +651,7 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     conversationId,
     systemInstructions,
     system: getAttr(tags, 'gen_ai.system'),
+    spanKind,
     inputMessages,
     outputMessages,
     tokenUsage: {
@@ -726,6 +666,9 @@ function extractOtelGenAi(tags: KeyValuePair[], logs: SpanLog[]): Omit<LlmSpanDa
     invocationParams: {
       temperature: getNumAttr(tags, 'gen_ai.request.temperature'),
       maxTokens: getNumAttr(tags, 'gen_ai.request.max_tokens'),
+      ...(getNumAttr(tags, 'gen_ai.request.max_tokens') !== undefined
+        ? { max_tokens: getNumAttr(tags, 'gen_ai.request.max_tokens') }
+        : {}),
       topP: getNumAttr(tags, 'gen_ai.request.top_p'),
       // gen_ai.request.top_k is used by Anthropic, Gemini and other providers.
       // It must be included explicitly here because the LlmInvocationParams index type
@@ -791,14 +734,45 @@ function extractGeneric(tags: KeyValuePair[], logs: SpanLog[], operationName?: s
       output: getNumAttr(tags, 'gen_ai.usage.output_tokens') ?? getNumAttr(tags, 'llm.token_count.completion') ?? getNumAttr(tags, 'completion_tokens'),
       total: getNumAttr(tags, 'gen_ai.usage.total_tokens') ?? getNumAttr(tags, 'llm.token_count.total') ?? getNumAttr(tags, 'total_tokens'),
     },
-    invocationParams: {
-      temperature: getNumAttr(tags, 'gen_ai.request.temperature') ?? getNumAttr(tags, 'temperature'),
-      maxTokens: getNumAttr(tags, 'gen_ai.request.max_tokens') ?? getNumAttr(tags, 'max_tokens'),
-      topP: getNumAttr(tags, 'gen_ai.request.top_p') ?? getNumAttr(tags, 'top_p'),
-    },
+    invocationParams: (() => {
+      // Try parsing llm.invocation_parameters (Python repr format)
+      const rawParams = getAttr(tags, 'llm.invocation_parameters');
+      if (rawParams) {
+        const parsed = parsePythonReprInvocationParams(rawParams);
+        if (parsed) {
+          return {
+            temperature: (parsed.temperature as number) ?? getNumAttr(tags, 'gen_ai.request.temperature') ?? getNumAttr(tags, 'temperature'),
+            maxTokens: (parsed.max_tokens as number) ?? getNumAttr(tags, 'gen_ai.request.max_tokens') ?? getNumAttr(tags, 'max_tokens'),
+            topP: (parsed.top_p as number) ?? getNumAttr(tags, 'gen_ai.request.top_p') ?? getNumAttr(tags, 'top_p'),
+          };
+        }
+      }
+      return {
+        temperature: getNumAttr(tags, 'gen_ai.request.temperature') ?? getNumAttr(tags, 'temperature'),
+        maxTokens: getNumAttr(tags, 'gen_ai.request.max_tokens') ?? getNumAttr(tags, 'max_tokens'),
+        topP: getNumAttr(tags, 'gen_ai.request.top_p') ?? getNumAttr(tags, 'top_p'),
+      };
+    })(),
     finishReason,
     ...(precomputedCostUsd !== undefined ? { precomputedCostUsd } : {}),
   };
+}
+
+// Helper to parse Python repr invocation_parameters (single quotes, True/False/None)
+function parsePythonReprInvocationParams(raw: string): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  try {
+    // Replace Python True/False/None with JSON true/false/null
+    const jsonStr = raw
+      .replace(/'/g, '"')
+      .replace(/\bTrue\b/g, 'true')
+      .replace(/\bFalse\b/g, 'false')
+      .replace(/\bNone\b/g, 'null');
+    const parsed = JSON.parse(jsonStr);
+    return isRecord(parsed) ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export function extractLlmSpanData(tags: KeyValuePair[], logs: SpanLog[], operationName?: string): LlmSpanData {
@@ -817,7 +791,23 @@ export function extractLlmSpanData(tags: KeyValuePair[], logs: SpanLog[], operat
   // For OTel GenAI, only treat the span as LLM if it's an LLM call or a GUARDRAIL
   // (guardrails invoke an LLM internally and carry the same gen_ai.* attributes).
   // CHAIN, TOOL, RETRIEVER etc. are structural spans, not the model call itself.
-  const isLlm = data.spanKind?.toUpperCase() === 'LLM' || data.spanKind?.toUpperCase() === 'GUARDRAIL';
+  // For generic convention, treat as LLM if it has model/token data.
+  let isLlm: boolean;
+  if (convention === 'otel-genai') {
+    // If there's no spanKind, check if the span has gen_ai.system or gen_ai.request.model
+    // - these indicate an LLM inference span even without an explicit operation name
+    const hasInferenceAttrs = tags.some(
+      (t) => t.key === 'gen_ai.system' || t.key === 'gen_ai.request.model'
+    );
+    if (hasInferenceAttrs && !data.spanKind) {
+      isLlm = true;
+    } else {
+      isLlm = data.spanKind?.toUpperCase() === 'LLM' || data.spanKind?.toUpperCase() === 'GUARDRAIL';
+    }
+  } else {
+    // Generic convention: treat as LLM if it has identifiable model or token data
+    isLlm = data.model !== '' && data.model !== 'unknown' || data.tokenUsage.input !== undefined || data.tokenUsage.output !== undefined;
+  }
   return { isLlm, ...data };
 }
 
@@ -832,6 +822,11 @@ export function isEmbeddingSpan(tags: KeyValuePair[]): boolean {
     if (v === 'embeddings' || v === 'create_embeddings' || v === 'embed') {
       return true;
     }
+  }
+  // Legacy/compat: llm.request.type
+  const reqType = tags.find((t) => t.key === 'llm.request.type');
+  if (reqType && String(reqType.value).toLowerCase() === 'embedding') {
+    return true;
   }
   return false;
 }
@@ -848,6 +843,14 @@ export function isLlmSpan(tags: KeyValuePair[]): boolean {
       t.key.startsWith('gen_ai.usage.')
   )) {
     return true;
+  }
+  // Check gen_ai.operation.name for LLM operations
+  const opName = tags.find((t) => t.key === 'gen_ai.operation.name');
+  if (opName) {
+    const v = String(opName.value).toLowerCase();
+    if (v === 'chat' || v === 'generate_content' || v === 'text_completion' || v === 'completions' || v === 'generate' || v === 'guardrail' || v === 'check_guardrail') {
+      return true;
+    }
   }
   // Generic convention: operation.type containing "completion"
   return tags.some(

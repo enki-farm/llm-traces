@@ -25,8 +25,8 @@ function makeOiSpan(idx: number) {
     startTimeUnixNano: String(1741900000000000000 + idx * 1000000),
     endTimeUnixNano: String(1741900000000000000 + idx * 1000000 + 500000),
     attributes: [
-      { key: 'openinference.span.kind', value: { stringValue: idx === 0 ? 'CHAIN' : 'LLM' } },
-      { key: 'llm.model_name', value: { stringValue: 'gpt-4o' } },
+      { key: 'gen_ai.operation.name', value: { stringValue: idx === 0 ? 'invoke_agent' : 'chat' } },
+      { key: 'gen_ai.system', value: { stringValue: 'openai' } },
     ],
     events: [],
   };

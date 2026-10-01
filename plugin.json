@@ -5,8 +5,8 @@
   "name": "LLM Traces",
   "id": "llm-traces-app",
   "info": {
-    "keywords": ["llm", "traces", "openinference", "observability", "genai", "otel"],
-    "description": "LLM trace visualization for OpenInference, OTel GenAI and Vertex AI spans stored in Grafana Tempo",
+    "keywords": ["llm", "traces", "observability", "genai", "otel"],
+    "description": "LLM trace visualization for OTel GenAI spans stored in Grafana Tempo",
     "author": { "name": "Agoda", "url": "https://github.com/agoda-com" },
     "logos": { "small": "img/logo.svg", "large": "img/logo.svg" },
     "screenshots": [

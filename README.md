@@ -5,16 +5,14 @@
 
 A Grafana app plugin for visualizing LLM (Large Language Model) traces stored in [Grafana Tempo](https://grafana.com/oss/tempo/).
 
-Supports multiple span conventions out of the box:
-
-- **OTel GenAI** (OpenTelemetry Semantic Conventions for GenAI)
+Supports OpenTelemetry GenAI semantic conventions out of the box.
 
 ## Features
 
 - Browse and search LLM traces via TraceQL
 - Inspect input/output messages with Markdown rendering
 - View tool calls with JSON payloads
-- Multi-convention detection tabs (LLM / OTel GenAI)
+- OTel GenAI span detection and detail panels
 - Token usage and estimated cost per span
 - Trace timeline with span hierarchy visualization
 - Resizable detail panels

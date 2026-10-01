@@ -14,11 +14,8 @@ const PLUGIN_URL = '/a/llm-traces-app';
 const LOAD_TIMEOUT = 10_000;
 
 const LLM_ATTRS = [
-  'openinference.span.kind',
   'gen_ai.system',
   'gen_ai.operation.name',
-  'llm.model_name',
-  'llm.request.type',
 ];
 
 async function setup(page: Page) {
