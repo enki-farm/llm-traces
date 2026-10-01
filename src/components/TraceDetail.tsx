@@ -6,7 +6,7 @@ import { useStyles2, useTheme2, Alert, Icon } from '@grafana/ui';
 import { getStyles } from './TraceDetail.styles';
 
 import { PluginSpan, flattenTree, getTraceDurationMs, getTraceStartMs } from '../utils/tempoClient';
-import { isLlmSpan, isAiSpan, extractLlmSpanData } from '../utils/llmUtils';
+import { isLlmSpan, isAiSpan, extractLlmSpanData, getSpanKind } from '../utils/llmUtils';
 import { estimateCost, formatCost } from '../utils/costUtils';
 import { formatDuration } from '../utils/formatUtils';
 import { SpanRow } from './SpanRow';
@@ -266,7 +266,8 @@ export function TraceDetailView({ traceId, rootName, spans, loading, error, onBa
   const selectedSpan = flatSpans.find((s) => s.spanId === effectiveSelectedSpanId) || null;
 
   // Auto-select first LLM span if nothing selected.
-  const firstLlmSpan = flatSpans.find((s) => isLlmSpan(s.tags));
+  const firstLlmSpan = flatSpans.find((s) => isLlmSpan(s.tags) && getSpanKind(s.tags) !== 'GUARDRAIL')
+    ?? flatSpans.find((s) => isLlmSpan(s.tags));
 
   // BUG-007: explicitly call setSelectedSpanId for auto-selection so it shows in state
   useEffect(() => {

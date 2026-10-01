@@ -348,9 +348,7 @@ test.describe('TraceDetail bug fixes', () => {
                     name: 'short-span-op',
                     startTimeUnixNano: String(BigInt(1741900000000) * 1000000n),
                     endTimeUnixNano: String(BigInt(1741900001000) * 1000000n),
-                    attributes: [
-                      { key: 'openinference.span.kind', value: { stringValue: 'LLM' } },
-                    ],
+                    attributes: [],
                     events: [],
                   },
                 ],
@@ -371,6 +369,7 @@ test.describe('TraceDetail bug fixes', () => {
     await openFirstTrace(page);
 
     // Wait for the detail panel to render
+    await page.getByTestId('span-row-short01').click();
     await expect(page.getByTestId('span-detail-panel')).toBeVisible({ timeout: 10_000 });
 
     // The span ID element must show the raw short ID without a trailing ellipsis
@@ -433,8 +432,7 @@ test.describe('TraceExplorer bug fixes', () => {
     // Standalone query must NOT start with {( — the Prism TraceQL grammar's filter
     // pattern requires the first character inside {} to be an attribute name.
     expect(firstQ, `Standalone LLM query must not start with {(: ${firstQ}`).not.toMatch(/^\{\s*\(/);
-    // Must still contain all the LLM filter attributes
-    expect(firstQ, 'Must contain openinference attr').toContain('span.openinference.span.kind');
+    expect(firstQ, 'Must contain OTel GenAI operation').toContain('span.gen_ai.operation.name');
   });
 
   test('BUG-040: LLM filter disjunction is parenthesised when combined with user TraceQL', async ({ page }) => {

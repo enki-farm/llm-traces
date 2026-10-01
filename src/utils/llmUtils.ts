@@ -888,6 +888,7 @@ export function isLlmSpan(tags: KeyValuePair[]): boolean {
 const OTEL_OPERATION_TO_KIND: Record<string, string> = {
   // LLM
   chat: 'LLM',
+  generate_content: 'LLM',
   text_completion: 'LLM',
   completions: 'LLM',
   generate: 'LLM',

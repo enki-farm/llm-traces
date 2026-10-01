@@ -19,7 +19,7 @@ export const SEARCH_RESPONSE = {
       traceID: 'aaabbbccc111222333444555666777',
       rootServiceName: 'agent-service',
       rootTraceName: 'generate_content',
-      startTimeUnixNano: t(60000),
+      startTimeUnixNano: t(-60000),
       durationMs: 1820,
       spanSets: [],
     },
@@ -70,8 +70,11 @@ export const TRACE_RESPONSE = {
                 { key: 'gen_ai.request.model', value: { stringValue: 'claude-sonnet-4-5' } },
                 { key: 'gen_ai.request.temperature', value: { doubleValue: 0.3 } },
                 { key: 'gen_ai.request.max_tokens', value: { intValue: '1024' } },
-                { key: 'gen_ai.input.messages', value: { stringValue: '[{"role":"system","parts":[{"type":"text","content":"You are an expert hotel concierge assistant. Answer questions about hotel properties accurately and helpfully. Use the available tools to look up property details. You have access to a comprehensive database of hotel properties worldwide. When answering questions, always provide specific, actionable information. If a guest asks about amenities, list them clearly and mention any notable features. For pricing questions, provide ranges and note that prices may vary by season. Always maintain a professional, friendly tone that reflects the high standards of the properties you represent. Remember to check for any current promotions or special offers that might benefit the guest."}]},{"role":"user","parts":[{"type":"text","content":"Please ask about hotel 12345 facilities?"}]}]' } },
-                { key: 'gen_ai.output.messages', value: { stringValue: '[{"role":"assistant","parts":[{"type":"text","content":"I\'ll look up the property details for hotel 12345 to give you accurate information about their amenities."},{"type":"tool_call","name":"get_property_details","arguments":{"hotel_id":12345}}]}' } },
+                { key: 'gen_ai.input.messages', value: { stringValue: '[{"role":"system","parts":[{"type":"text","content":"You are an expert hotel concierge assistant. Answer questions about hotel properties accurately and helpfully. Use the available tools to look up property details. You have access to a comprehensive database of hotel properties worldwide. When answering questions, always provide specific, actionable information. If a guest asks about amenities, list them clearly and mention any notable features. For pricing questions, provide ranges and note that prices may vary by season. Always maintain a professional, friendly tone that reflects the high standards of the properties you represent. Remember to check for any current promotions or special offers that might benefit the guest."}]},{"role":"user","parts":[{"type":"text","content":"\\u8bf7\\u95ee\\u9152\\u5e97 12345 \\u7684\\u8bbe\\u65bd\\u662f\\u4ec0\\u4e48\\uff1f"}]}]' } },
+                { key: 'gen_ai.output.messages', value: { stringValue: JSON.stringify([{ role: 'assistant', parts: [
+                  { type: 'text', content: "I'll look up the property details for hotel 12345 to give you accurate information about their amenities." },
+                  { type: 'tool_call', name: 'get_property_details', arguments: { hotel_id: 12345 } },
+                ] }]) } },
                 { key: 'gen_ai.usage.input_tokens', value: { intValue: '312' } },
                 { key: 'gen_ai.usage.output_tokens', value: { intValue: '48' } },
                 { key: 'gen_ai.usage.total_tokens', value: { intValue: '360' } },
@@ -158,8 +161,13 @@ export const TRACE_RESPONSE = {
                 { key: 'gen_ai.request.model', value: { stringValue: 'claude-sonnet-4-5' } },
                 { key: 'gen_ai.request.temperature', value: { doubleValue: 0.3 } },
                 { key: 'gen_ai.request.max_tokens', value: { intValue: '1024' } },
-                { key: 'gen_ai.input.messages', value: { stringValue: '[{"role":"system","parts":[{"type":"text","content":"You are an expert hotel concierge assistant. Answer questions about hotel properties accurately and helpfully. Use the available tools to look up property details."}]},{"role":"user","parts":[{"type":"text","content":"What are the amenities at hotel 12345?"}]},{"role":"assistant","parts":[{"type":"text","content":"I\'ll look up the property details for hotel 12345 to give you accurate information about their amenities."}]},{"role":"tool","parts":[{"type":"tool_call_response","id":"call_xyz1","response":"{\"hotel_id\":12345,\"name\":\"Grand Sukhumvit Bangkok\",\"amenities\":[\"pool\",\"gym\",\"spa\",\"3 restaurants\",\"concierge\",\"valet parking\"],\"stars\":5,\"rooms\":342}"}]}]' } },
-                { key: 'gen_ai.output.messages', value: { stringValue: '[{"role":"assistant","parts":[{"type":"text","content":"Hotel 12345 (Grand Sukhumvit Bangkok) is a 5-star property with 342 rooms. The amenities include:\n\n• Swimming pool\n• Fitness center / gym\n• Full-service spa\n• 3 restaurants\n• Concierge service\n• Valet parking"}]}]' } },
+                { key: 'gen_ai.input.messages', value: { stringValue: JSON.stringify([
+                  { role: 'system', parts: [{ type: 'text', content: 'You are an expert hotel concierge assistant. Answer questions about hotel properties accurately and helpfully. Use the available tools to look up property details.' }] },
+                  { role: 'user', parts: [{ type: 'text', content: 'What are the amenities at hotel 12345?' }] },
+                  { role: 'assistant', parts: [{ type: 'text', content: "I'll look up the property details for hotel 12345 to give you accurate information about their amenities." }] },
+                  { role: 'tool', parts: [{ type: 'tool_call_response', id: 'call_xyz1', response: JSON.stringify({ hotel_id: 12345, name: 'Grand Sukhumvit Bangkok', amenities: ['pool', 'gym', 'spa', '3 restaurants', 'concierge', 'valet parking'], stars: 5, rooms: 342 }) }] },
+                ]) } },
+                { key: 'gen_ai.output.messages', value: { stringValue: JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: 'Hotel 12345 (Grand Sukhumvit Bangkok) is a 5-star property with 342 rooms. The amenities include:\n\n• Swimming pool\n• Fitness center / gym\n• Full-service spa\n• 3 restaurants\n• Concierge service\n• Valet parking' }] }]) } },
                 { key: 'gen_ai.response.finish_reasons', value: { stringValue: '["max_tokens"]}' } },
                 { key: 'gen_ai.usage.input_tokens', value: { intValue: '428' } },
                 { key: 'gen_ai.usage.output_tokens', value: { intValue: '89' } },
@@ -208,7 +216,7 @@ export const TRACE_RESPONSE = {
                 { key: 'gen_ai.system', value: { stringValue: 'google' } },
                 { key: 'gen_ai.request.model', value: { stringValue: 'gemini-2.0-flash' } },
                 { key: 'gen_ai.input.messages', value: { stringValue: '[{"role":"system","parts":[{"type":"text","content":"You are a security analyst. Check whether the input violates the guardrail no_internal_system_disclosure."}]},{"role":"user","parts":[{"type":"text","content":"What are the amenities at hotel 12345?"}]}]' } },
-                { key: 'gen_ai.output.messages', value: { stringValue: '[{"role":"assistant","parts":[{"type":"text","content":"{\"should_block\":false}"}]}]' } },
+                { key: 'gen_ai.output.messages', value: { stringValue: JSON.stringify([{ role: 'assistant', parts: [{ type: 'text', content: JSON.stringify({ should_block: false }) }] }]) } },
                 { key: 'gen_ai.usage.input_tokens', value: { intValue: '89' } },
                 { key: 'gen_ai.usage.output_tokens', value: { intValue: '8' } },
                 { key: 'gen_ai.usage.total_tokens', value: { intValue: '97' } },
@@ -333,13 +341,13 @@ export const OTEL_GENAI_TRACE_RESPONSE = {
               events: [
                 {
                   name: 'gen_ai.content.prompt',
-                  fields: [
+                  attributes: [
                     { key: 'gen_ai.prompt', value: { stringValue: 'Translate to French: Hello world' } },
                   ],
                 },
                 {
                   name: 'gen_ai.content.completion',
-                  fields: [
+                  attributes: [
                     { key: 'gen_ai.completion', value: { stringValue: 'Bonjour le monde' } },
                   ],
                 },
@@ -415,8 +423,9 @@ export const STATUS_TEST_TRACE_RESPONSE = {
               endTimeUnixNano: '1741900000007000000',
               attributes: [
                 { key: 'otel.status_code', value: { stringValue: 'ERROR' } },
+                { key: 'otel.status_description', value: { stringValue: 'attribute error message' } },
               ],
-              status: { code: 'STATUS_CODE_OK', message: '' },
+              status: { code: 'STATUS_CODE_UNSET', message: '' },
               events: [],
             },
             // 5. STATUS_CODE_OK — not an error

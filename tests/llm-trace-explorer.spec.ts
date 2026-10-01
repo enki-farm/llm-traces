@@ -36,7 +36,7 @@ test.describe('LLM Trace Explorer', () => {
   });
 
   test('shows trace count', async ({ page }) => {
-    await expect(page.getByText('2 traces')).toBeVisible();
+    await expect(page.getByTestId('trace-list-pane').getByText('2 traces')).toBeVisible({ timeout: 15_000 });
   });
 
   test('loads trace on click and shows trace detail', async ({ page }) => {
@@ -48,7 +48,7 @@ test.describe('LLM Trace Explorer', () => {
     await page.click('[data-testid^="trace-item-"]');
     // process_query appears in trace list AND span list, use first()
     await expect(page.getByText('process_query').first()).toBeVisible();
-    await expect(page.getByText('llm claude-sonnet-4-5').first()).toBeVisible();
+    await expect(page.getByText('chat claude-sonnet-4-5').first()).toBeVisible();
     await expect(page.getByText('get_property_details').first()).toBeVisible();
   });
 
@@ -105,14 +105,16 @@ test.describe('LLM Trace Explorer', () => {
 
   test('LLM detail shows Output section', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
+    await page.getByTestId('span-row-span0004').click();
     await expect(page.getByTestId('output-section')).toBeVisible();
   });
 
   test('message blocks show role labels', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
+    await page.getByTestId('span-row-span0004').click();
     await expect(page.getByTestId('message-block-system')).toBeVisible();
     await expect(page.getByTestId('message-block-user')).toBeVisible();
-    await expect(page.getByTestId('message-block-assistant')).toBeVisible();
+    await expect(page.getByTestId('output-section').getByTestId('message-block-assistant')).toBeVisible();
   });
 
   test('message content shows prompt text', async ({ page }) => {
@@ -258,9 +260,9 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('tool-input-section')).toBeVisible();
     await expect(page.getByTestId('tool-output-section')).toBeVisible();
     // Verify input contains the call arguments JSON
-    await expect(page.getByText('hotel_id')).toBeVisible();
+    await expect(page.getByTestId('tool-input-section')).toContainText('hotel_id');
     // Verify output contains the call result JSON
-    await expect(page.getByText('Grand Sukhumvit Bangkok')).toBeVisible();
+    await expect(page.getByTestId('tool-output-section')).toContainText('Grand Sukhumvit Bangkok');
   });
 
   test('RETRIEVER span with a model shows JSON input and output cards', async ({ page }) => {
@@ -273,7 +275,7 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('retriever-input-section')).not.toContainText('top_k');
     await expect(page.getByTestId('retriever-output-section')).toContainText('"content": "Pool and spa"');
     const retriever = page.getByTestId('retriever-section');
-    await expect(retriever.getByTestId('retriever-meta-row')).toContainText('Data Source: hotel-index');
+    await expect(retriever.getByTestId('retriever-meta-row')).toContainText('Data Source:hotel-index');
     await expect(retriever.getByTestId('retriever-meta-row')).not.toContainText('Top K');
     const params = page.getByTestId('retriever-params-section');
     await expect(params).toContainText('Parameters & Token Usage');
@@ -312,7 +314,7 @@ test.describe('LLM Trace Explorer', () => {
       await expect(detail.getByTestId('memory-meta-row')).toContainText(operation.replace(/_/g, ' '));
       await expect(detail.getByTestId('memory-meta-row')).toContainText('guest-preferences');
       if (!operation.endsWith('_store')) {
-        await expect(detail.getByTestId('memory-meta-row')).toContainText('Records: 1');
+        await expect(detail.getByTestId('memory-meta-row')).toContainText('Records:1');
       }
       if (operation === 'search_memory') {
         await expect(detail.getByTestId('memory-input-section')).toContainText('seat preference');
@@ -358,9 +360,9 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('reranker-section')).toBeVisible();
   });
 
-  test('UNKNOWN span does not show LLM detail panel', async ({ page }) => {
+  test('non-AI HTTP span does not show LLM detail panel', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    await page.click('[data-testid="span-row-span0009"]');
+    await page.click('[data-testid="span-row-span0005"]');
     await expect(page.getByTestId('llm-span-detail')).not.toBeVisible();
   });
 
@@ -560,6 +562,7 @@ test.describe('LLM Trace Explorer', () => {
 
   test('copy button is present in output section', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
+    await page.getByTestId('span-row-span0004').click();
     await expect(page.getByTestId('output-section').getByTitle('Copy output')).toBeVisible();
   });
 
@@ -617,7 +620,7 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('llm-span-detail')).toBeVisible();
     // Press j — moves to span0003 (TOOL span)
     await page.keyboard.press('j');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
     await expect(page.getByTestId('llm-span-detail')).not.toBeVisible();
   });
 
@@ -627,7 +630,7 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('llm-span-detail')).toBeVisible();
     // Move forward to span0003 (TOOL)
     await page.keyboard.press('j');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
     // Move back to span0002 (LLM)
     await page.keyboard.press('k');
     await expect(page.getByTestId('llm-span-detail')).toBeVisible();
@@ -635,13 +638,13 @@ test.describe('LLM Trace Explorer', () => {
 
   test('Escape key deselects span and hides detail panel', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    // Click the CHAIN root span → OI detail shown, not LLM detail
+    // Click the CHAIN root span to show GenAI detail, not LLM detail
     await page.click('[data-testid="span-row-span0001"]');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
     await expect(page.getByTestId('llm-span-detail')).not.toBeVisible();
     // Press Escape → deselects; BUG-077: userDismissedDetail suppresses firstLlmSpan fallback
     await page.keyboard.press('Escape');
-    await expect(page.getByTestId('oi-span-detail')).not.toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).not.toBeVisible();
     await expect(page.getByTestId('llm-span-detail')).not.toBeVisible();
   });
 
@@ -649,7 +652,7 @@ test.describe('LLM Trace Explorer', () => {
     await page.click('[data-testid^="trace-item-"]');
     await expect(page.getByTestId('llm-span-detail')).toBeVisible();
     await page.keyboard.press('ArrowDown');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
   });
 
   test('trace ID lookup row is not present', async ({ page }) => {
@@ -788,7 +791,7 @@ test.describe('LLM Trace Explorer', () => {
     // Load first trace and navigate to TOOL span
     await page.click('[data-testid^="trace-item-"]');
     await page.click('[data-testid="span-row-span0003"]');
-    await expect(page.getByTestId('oi-span-detail')).toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).toBeVisible();
 
     // Enable AI-only filter
     await page.click('button[title="Show only AI spans"]');
@@ -799,10 +802,10 @@ test.describe('LLM Trace Explorer', () => {
     await page.click('[data-testid^="trace-item-"]:last-of-type');
 
     // State should have reset: AI filter off (non-AI span visible again) and
-    // auto-selection back to first LLM span (llm-span-detail visible, not oi-span-detail)
+    // auto-selection back to first LLM span (not GenAI detail)
     await expect(page.getByTestId('span-row-span0005')).toBeVisible();
     await expect(page.getByTestId('llm-span-detail')).toBeVisible();
-    await expect(page.getByTestId('oi-span-detail')).not.toBeVisible();
+    await expect(page.getByTestId('genai-span-detail')).not.toBeVisible();
   });
 
   test('long message content is fully visible without expand/collapse', async ({ page }) => {
@@ -837,8 +840,8 @@ test.describe('LLM Trace Explorer', () => {
     const unknownModelTrace = JSON.parse(JSON.stringify(TRACE_RESPONSE));
     unknownModelTrace.resourceSpans[0].scopeSpans[0].spans[1].attributes =
       unknownModelTrace.resourceSpans[0].scopeSpans[0].spans[1].attributes.map((attr: Record<string, unknown>) =>
-        (attr.key as string) === 'llm.model_name'
-          ? { key: 'llm.model_name', value: { stringValue: 'totally-unknown-model-xyz' } }
+        (attr.key as string) === 'gen_ai.request.model'
+          ? { key: 'gen_ai.request.model', value: { stringValue: 'totally-unknown-model-xyz' } }
           : attr
       );
     await page.route('**/api/datasources/proxy/uid/**/api/traces/**', async (route) => {
@@ -850,11 +853,11 @@ test.describe('LLM Trace Explorer', () => {
   });
 
   test('model badge is hidden when model cannot be identified', async ({ page }) => {
-    // Remove llm.model_name so extraction falls back to 'unknown'
+    // Remove the model attribute so extraction falls back to 'unknown'
     const noModelTrace = JSON.parse(JSON.stringify(TRACE_RESPONSE));
     noModelTrace.resourceSpans[0].scopeSpans[0].spans[1].attributes =
       noModelTrace.resourceSpans[0].scopeSpans[0].spans[1].attributes.filter(
-        (attr: Record<string, unknown>) => (attr.key as string) !== 'llm.model_name'
+        (attr: Record<string, unknown>) => (attr.key as string) !== 'gen_ai.request.model'
       );
     await page.route('**/api/datasources/proxy/uid/**/api/traces/**', async (route) => {
       await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(noModelTrace) });
@@ -1027,10 +1030,9 @@ test.describe('LLM Trace Explorer', () => {
     const url = new URL(capturedUrl!);
     const q = url.searchParams.get('q');
     expect(q).toBeTruthy();
-    // Must include OpenInference, OTel GenAI and fallback model attributes
-    expect(q).toContain('openinference.span.kind');
+    // Must include the supported OTel GenAI operation and provider attributes
     expect(q).toContain('gen_ai.system');
-    expect(q).toContain('llm.model_name');
+    expect(q).toContain('gen_ai.provider.name');
     // Must also include gen_ai.operation.name — the primary OTel GenAI span marker set by
     // opentelemetry-instrumentation-openai; spans from that library may not set gen_ai.system
     expect(q).toContain('gen_ai.operation.name');
@@ -1109,35 +1111,33 @@ test.describe('OTel GenAI convention', () => {
     await expect(page.getByTestId('llm-span-detail')).toBeVisible();
   });
 
-  test('OTel GenAI detail shows gpt-4o model', async ({ page }) => {
+  test('OTel GenAI detail shows gemini-2.0-flash model', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-model-name')).toContainText('gpt-4o');
+    await expect(page.getByTestId('llm-model-name')).toContainText('gemini-2.0-flash');
   });
 
   test('OTel GenAI detail shows input messages from span events', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     await expect(page.getByTestId('input-messages-section')).toBeVisible();
-    // gen_ai.content.prompt event has JSON array with system + user messages
-    await expect(page.getByTestId('llm-span-detail').getByText('You are a helpful travel assistant.')).toBeVisible();
-    await expect(page.getByTestId('llm-span-detail').getByText('What are the top 3 attractions in Paris?')).toBeVisible();
+    await expect(page.getByTestId('llm-span-detail').getByText('Translate to French: Hello world')).toBeVisible();
   });
 
   test('OTel GenAI detail shows output from completion event', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     await expect(page.getByTestId('output-section')).toBeVisible();
-    await expect(page.getByTestId('output-section').getByText(/top 3 attractions in Paris/)).toBeVisible();
+    await expect(page.getByTestId('output-section').getByText('Bonjour le monde')).toBeVisible();
   });
 
   test('OTel GenAI detail shows token usage', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     const params = page.getByTestId('params-section');
-    await expect(params.getByText('145')).toBeVisible();  // input tokens
-    await expect(params.getByText('67')).toBeVisible();   // output tokens
+    await expect(params.getByText('50')).toBeVisible();  // input tokens
+    await expect(params.getByText('100')).toBeVisible(); // output tokens
   });
 
-  test('OTel GenAI detail shows stop finish reason', async ({ page }) => {
+  test('OTel GenAI detail omits finish reason when absent', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
-    await expect(page.getByTestId('llm-span-detail').getByText('STOP')).toBeVisible();
+    await expect(page.getByTestId('llm-span-detail').getByText('STOP')).not.toBeVisible();
   });
 
   test('OTel GenAI convention badge is shown', async ({ page }) => {
@@ -1269,7 +1269,7 @@ test.describe('Share link', () => {
     await page.click('[data-testid^="trace-item-"]');
     await expect(page.getByTestId('trace-detail-view')).toBeVisible();
     // Go back to trace list
-    await page.getByRole('button', { name: /back/i }).click();
+    await page.getByTestId('trace-detail-view').getByRole('button', { name: 'Back', exact: true }).click();
     await page.waitForTimeout(300);
     const url = new URL(page.url());
     expect(url.searchParams.get('llt-traceId')).toBeNull();
