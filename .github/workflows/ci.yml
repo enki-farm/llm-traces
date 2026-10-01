@@ -88,19 +88,26 @@ jobs:
             -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \
             -e GF_DEFAULT_APP_MODE=development \
             -e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=llm-traces-app \
-            grafana/grafana-oss:12.0.0
+            grafana/grafana-oss:13.0.0
           docker cp dist/. grafana:/var/lib/grafana/plugins/llm-traces-app/
           docker cp provisioning/plugins/. grafana:/etc/grafana/provisioning/plugins/
           docker cp provisioning/datasources/tempo.yaml grafana:/etc/grafana/provisioning/datasources/tempo.yaml
           docker restart grafana
           # Wait for Grafana to be ready
+          grafana_ready=0
           for i in $(seq 1 30); do
             if curl -sf http://localhost:3000/api/health > /dev/null 2>&1; then
               echo "Grafana is ready"
+              grafana_ready=1
               break
             fi
             sleep 2
           done
+          if [[ "$grafana_ready" -ne 1 ]]; then
+            echo "Grafana failed to become ready"
+            docker logs grafana
+            exit 1
+          fi
 
       - name: Run E2E tests
         run: npx playwright test --reporter=list
