@@ -2,7 +2,7 @@
 Inject realistic OpenTelemetry GenAI semantic-convention traces into
 local Grafana Tempo.
 
-Designed to exercise the agoda-com/llm-traces Grafana plugin with:
+Designed to exercise the enki-farm/llm-traces Grafana plugin with:
 
     invoke_agent
         └── plan
@@ -896,6 +896,7 @@ def start_retrieval_span(
     tracer,
     *,
     data_source_id,
+    provider=None,
     model,
     query,
     top_k,
@@ -915,6 +916,12 @@ def start_retrieval_span(
         "gen_ai.operation.name",
         "retrieval",
     )
+
+    if provider:
+        span.set_attribute(
+            "gen_ai.provider.name",
+            provider,
+        )
 
     span.set_attribute(
         "gen_ai.request.model",
@@ -944,7 +951,7 @@ def start_retrieval_span(
 
     if embedding_tokens is not None:
         span.set_attribute(
-            "gen_ai.usage.embedding_tokens",
+            "gen_ai.usage.input_tokens",
             embedding_tokens,
         )
 
@@ -959,6 +966,7 @@ def start_kb_lookup_span(
     tracer,
     *,
     data_source_id,
+    provider=None,
     query,
     results,
 ):
@@ -975,6 +983,12 @@ def start_kb_lookup_span(
         "gen_ai.operation.name",
         "retrieval",
     )
+
+    if provider:
+        span.set_attribute(
+            "gen_ai.provider.name",
+            provider,
+        )
 
     span.set_attribute(
         "gen_ai.data_source.id",
@@ -1164,6 +1178,7 @@ def inject_rag_support_agent(tracer):
         retrieve1 = start_retrieval_span(
             tracer,
             data_source_id="faiss-index",
+            provider="openai",
             model="text-embedding-3-small",
             query="shipping delivery return policy",
             top_k=3,
@@ -1189,6 +1204,7 @@ def inject_rag_support_agent(tracer):
         kb1 = start_kb_lookup_span(
             tracer,
             data_source_id="company-faq",
+            provider="internal",
             query="shipping delivery return policy",
             results=[
                 {
@@ -1384,6 +1400,7 @@ def inject_rag_support_agent(tracer):
         retrieve2 = start_retrieval_span(
             tracer,
             data_source_id="faiss-index",
+            provider="openai",
             model="text-embedding-3-small",
             query="order ORD-98765 status tracking",
             top_k=1,
@@ -1874,6 +1891,7 @@ def inject_multi_tool_agent(tracer):
         retrieve_cancel = start_retrieval_span(
             tracer,
             data_source_id="faiss-index",
+            provider="openai",
             model="text-embedding-3-small",
             query="cancellation policy refund",
             top_k=2,

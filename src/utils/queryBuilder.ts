@@ -1,14 +1,14 @@
 import type { DataSourceApi } from '@grafana/data';
 
 // Broad filter that catches all supported LLM conventions:
-//   - OTel GenAI: gen_ai.system or gen_ai.operation.name attribute present
+//   - OTel GenAI: operation/provider attribute present, with gen_ai.system legacy fallback
 //   - Generic: operation.type containing "completion"
 //
 // The bare disjunction — used for standalone queries so the Prism TraceQL grammar
 // can tokenize attribute names correctly (its filter pattern requires the first char
 // inside {} to be an attribute name, not a parenthesis).
 export const LLM_FILTER_CONDITIONS =
-  'span.gen_ai.system != "" || span.gen_ai.operation.name != ""';
+  'span.gen_ai.operation.name != "" || span.gen_ai.provider.name != "" || span.gen_ai.system != ""';
 
 // BUG-040: grouped form, used only when &&-ing with a user condition so operator
 // precedence is correct: (A||B||C||D||E) && user_condition

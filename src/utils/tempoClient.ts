@@ -14,9 +14,30 @@ export interface TempoTraceSearchResult {
       durationNanos: string;
       name?: string;
       attributes: Array<{ key: string; value: { stringValue?: string; intValue?: string; doubleValue?: number; boolValue?: boolean } }>;
+      status?: { code?: string | number };
     }>;
     matched: number;
   }>;
+}
+
+export function isTraceSearchSpanError(span: {
+  attributes?: Array<{ key: string; value?: { stringValue?: string; intValue?: string; doubleValue?: number; boolValue?: boolean } }>;
+  status?: { code?: string | number };
+}): boolean {
+  const statusCode = String(span.status?.code ?? '').toUpperCase();
+  if (statusCode === 'STATUS_CODE_ERROR' || statusCode === 'ERROR' || statusCode === '2') {
+    return true;
+  }
+  return (span.attributes ?? []).some((attribute) => {
+    const key = attribute.key.toLowerCase();
+    const stringValue = String(attribute.value?.stringValue ?? '').toUpperCase();
+    const intValue = attribute.value?.intValue;
+    return (
+      (key === 'otel.status_code' && stringValue === 'ERROR') ||
+      (key === 'status.code' && (stringValue === 'ERROR' || stringValue === 'STATUS_CODE_ERROR' || intValue === '2')) ||
+      (key === 'status' && stringValue === 'ERROR')
+    );
+  });
 }
 
 export interface PluginSpan {

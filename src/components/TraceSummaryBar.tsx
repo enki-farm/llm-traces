@@ -1,7 +1,7 @@
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
-import { TempoTraceSearchResult } from '../utils/tempoClient';
+import { isTraceSearchSpanError, TempoTraceSearchResult } from '../utils/tempoClient';
 import { formatDuration } from '../utils/formatUtils';
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -56,10 +56,7 @@ export function TraceSummaryBar({ traces }: TraceSummaryBarProps) {
   const errorCount = traces.filter((t) =>
     t.spanSets?.some((ss) =>
       ss.spans?.some((sp) =>
-        sp.attributes?.some((a) =>
-          (a.key === 'otel.status_code' && String(a.value?.stringValue ?? '').toUpperCase() === 'ERROR') ||
-          (a.key === 'status.code' && (String(a.value?.stringValue ?? '').toUpperCase() === 'ERROR' || a.value?.intValue === '2'))
-        )
+        isTraceSearchSpanError(sp)
       )
     )
   ).length;

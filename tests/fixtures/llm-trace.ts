@@ -109,7 +109,7 @@ export const TRACE_RESPONSE = {
                 { key: 'gen_ai.data_source.id', value: { stringValue: 'hotel-index' } },
                 { key: 'gen_ai.retrieval.query.text', value: { stringValue: 'hotel amenities' } },
                 { key: 'gen_ai.retrieval.top_k', value: { intValue: '2' } },
-                { key: 'gen_ai.usage.embedding_tokens', value: { intValue: '1234' } },
+                { key: 'gen_ai.usage.input_tokens', value: { intValue: '1234' } },
                 { key: 'gen_ai.retrieval.documents', value: { stringValue: '[{"id":"hotel-12345","content":"Pool and spa"}]' } },
               ],
               events: [],

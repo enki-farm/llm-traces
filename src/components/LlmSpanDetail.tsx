@@ -349,7 +349,8 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
   const retrievalDocs = kind === 'RETRIEVER' ? extractRetrievalDocuments(tags) : [];
   const retrievalDocuments = getAttrValue(tags, 'gen_ai.retrieval.documents');
   const retrievalTopK = getAttrValue(tags, 'gen_ai.retrieval.top_k');
-  const embeddingTokens = getAttrValue(tags, 'gen_ai.usage.embedding_tokens');
+  // Keep reading the legacy field so previously emitted traces remain useful.
+  const embeddingTokens = getAttrValue(tags, 'gen_ai.usage.input_tokens') || getAttrValue(tags, 'gen_ai.usage.embedding_tokens');
   const dataSourceId = getAttrValue(tags, 'gen_ai.data_source.id');
   const retrievalModel = getAttrValue(tags, 'gen_ai.request.model');
 
