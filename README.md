@@ -127,6 +127,32 @@ npm run lint
 
 > **Note:** Node.js >= 22.6 is required for the `--experimental-strip-types` flag used by the test runner and build scripts.
 
+### End-to-end tests
+
+The devcontainer includes Chromium and its Debian runtime dependencies. After adding or changing the devcontainer configuration, rebuild the container in VS Code. The browser version matches `@playwright/test` in `package.json`; do not run `playwright install --with-deps` inside the Debian container (Playwright selects unavailable Ubuntu font packages there).
+
+In the devcontainer, install dependencies and build the plugin:
+
+```bash
+npm ci
+npm run build:standalone
+```
+
+On the Docker host, from the same repository directory, start Grafana with that build (the devcontainer does not install the Docker CLI):
+
+```bash
+docker compose -f docker/docker-compose.yml up --build -d
+```
+
+Back in the devcontainer, verify Grafana is reachable and run the tests:
+
+```bash
+curl -f http://localhost:3000/api/health
+npm run e2e
+```
+
+The Compose build copies `dist/` into the Grafana image, so rebuild the plugin and rerun Compose with `--build` after source changes. If Grafana is already running with the current build, just run `npm run e2e`. The tests use `http://localhost:3000` by default; set `GRAFANA_URL` to point at another instance. To run one spec, use `npx playwright test tests/llm-trace-explorer.spec.ts`. View failures in `playwright-report/`, and stop the local stack on the host with `docker compose -f docker/docker-compose.yml down`.
+
 See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## Origin and License
