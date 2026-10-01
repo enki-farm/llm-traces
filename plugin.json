@@ -7,13 +7,13 @@
   "info": {
     "keywords": ["llm", "traces", "observability", "genai", "otel"],
     "description": "LLM trace visualization for OTel GenAI spans stored in Grafana Tempo",
-    "author": { "name": "Agoda", "url": "https://github.com/agoda-com" },
+    "author": { "name": "enki GmbH", "url": "https://github.com/enki-farm" },
     "logos": { "small": "img/logo.svg", "large": "img/logo.svg" },
     "screenshots": [
       { "name": "LLM Traces", "path": "img/llm-traces-screenshot.png" }
     ],
     "version": "0.0.1",
-    "updated": "2026-04-06"
+    "updated": "2026-10-01"
   },
   "includes": [
     {
@@ -27,13 +27,13 @@
     }
   ],
   "dependencies": {
-    "grafanaDependency": ">=11.1.0",
+    "grafanaDependency": ">=13.0.0",
     "plugins": [
       {
         "type": "datasource",
         "id": "tempo",
         "name": "Tempo",
-        "version": ">=0.1.0"
+        "version": ">=0.3.0"
       }
     ]
   }
