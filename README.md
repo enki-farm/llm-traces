@@ -7,6 +7,11 @@ A Grafana app plugin for visualizing LLM (Large Language Model) traces stored in
 
 Supports OpenTelemetry GenAI semantic conventions out of the box.
 
+> **Development note:** Significant parts of this project have been edited and
+> extended with the help of AI tools. The developer has actively directed the
+> work, made the design and implementation decisions, and remains responsible
+> for reviewing and maintaining the project.
+
 ## Features
 
 - Browse and search LLM traces via TraceQL
