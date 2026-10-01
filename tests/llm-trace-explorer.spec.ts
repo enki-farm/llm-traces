@@ -125,11 +125,27 @@ test.describe('LLM Trace Explorer', () => {
   test('shows token counts in params section', async ({ page }) => {
     await page.click('[data-testid^="trace-item-"]');
     await expect(page.getByTestId('params-section')).toBeVisible();
+    await expect(page.getByTestId('llm-span-detail').locator(':scope > [data-testid]').first()).toHaveAttribute('data-testid', 'params-section');
     // Params section is open by default — no click needed
     // Scope to params-section to avoid matching same numbers in attribute table
     await expect(page.getByTestId('params-section').getByText('312')).toBeVisible(); // input tokens
     await expect(page.getByTestId('params-section').getByText('48')).toBeVisible();  // output tokens
     await expect(page.getByTestId('params-section').getByText('360')).toBeVisible(); // total tokens
+  });
+
+  test('LLM agent metadata appears before parameters', async ({ page }) => {
+    const trace = structuredClone(TRACE_RESPONSE);
+    (trace.resourceSpans[0].scopeSpans[0].spans[1].attributes as Array<{ key: string; value: { stringValue: string } }>).push({
+      key: 'gen_ai.conversation.id', value: { stringValue: 'sess_abc123' },
+    });
+    await page.route('**/api/datasources/proxy/uid/**/api/traces/**', (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(trace) })
+    );
+    await page.reload();
+    await page.click('[data-testid^="trace-item-"]');
+    const sections = page.getByTestId('llm-span-detail').locator(':scope > [data-testid]');
+    await expect(sections.nth(0)).toHaveAttribute('data-testid', 'agent-section');
+    await expect(sections.nth(1)).toHaveAttribute('data-testid', 'params-section');
   });
 
   test('clicking a different span updates detail panel', async ({ page }) => {
@@ -238,6 +254,44 @@ test.describe('LLM Trace Explorer', () => {
     await expect(page.getByTestId('genai-span-detail')).toBeVisible();
     await expect(page.getByTestId('genai-span-kind')).toContainText('TOOL');
     await expect(page.getByTestId('tool-section')).toBeVisible();
+    // Verify separate Input and Output cards
+    await expect(page.getByTestId('tool-input-section')).toBeVisible();
+    await expect(page.getByTestId('tool-output-section')).toBeVisible();
+    // Verify input contains the call arguments JSON
+    await expect(page.getByText('hotel_id')).toBeVisible();
+    // Verify output contains the call result JSON
+    await expect(page.getByText('Grand Sukhumvit Bangkok')).toBeVisible();
+  });
+
+  test('RETRIEVER span with a model shows JSON input and output cards', async ({ page }) => {
+    await page.click('[data-testid^="trace-item-"]');
+    await page.click('[data-testid="span-row-span0012"]');
+    await expect(page.getByTestId('genai-span-kind')).toContainText('RETRIEVER');
+    await expect(page.getByTestId('retriever-model-name')).toHaveText('text-embedding-3-small');
+    await expect(page.getByTestId('llm-span-detail')).not.toBeVisible();
+    await expect(page.getByTestId('retriever-input-section')).toContainText('"query": "hotel amenities"');
+    await expect(page.getByTestId('retriever-input-section')).not.toContainText('top_k');
+    await expect(page.getByTestId('retriever-output-section')).toContainText('"content": "Pool and spa"');
+    const retriever = page.getByTestId('retriever-section');
+    await expect(retriever.getByTestId('retriever-meta-row')).toContainText('Data Source: hotel-index');
+    await expect(retriever.getByTestId('retriever-meta-row')).not.toContainText('Top K');
+    const params = page.getByTestId('retriever-params-section');
+    await expect(params).toContainText('Parameters & Token Usage');
+    await expect(retriever.locator(':scope > [data-testid$="-section"]').first()).toHaveAttribute('data-testid', 'retriever-params-section');
+    await expect(params).toContainText('top_k:');
+    await expect(params).toContainText('2');
+    await expect(params).toContainText('Embedding Tokens:');
+    await expect(params).toContainText('1,234');
+  });
+
+  test('RETRIEVER span renders indexed documents as JSON', async ({ page }) => {
+    await page.click('[data-testid^="trace-item-"]');
+    await page.click('[data-testid="span-row-span0013"]');
+    await expect(page.getByTestId('retriever-model-name')).toHaveCount(0);
+    await expect(page.getByTestId('retriever-input-section')).toContainText('"query": "hotel policies"');
+    await expect(page.getByTestId('retriever-output-section')).toContainText('"id": "faq-1"');
+    await expect(page.getByTestId('retriever-output-section')).toContainText('"content": "Check-in starts at 3 PM"');
+    await expect(page.getByTestId('retriever-params-section')).toHaveCount(0);
   });
 
   test('GUARDRAIL span shows LLM detail panel', async ({ page }) => {

@@ -833,7 +833,7 @@ export function isEmbeddingSpan(tags: KeyValuePair[]): boolean {
 
 export function isLlmSpan(tags: KeyValuePair[]): boolean {
   // Embedding spans are not LLM chat/completion spans
-  if (isEmbeddingSpan(tags)) {
+  if (isEmbeddingSpan(tags) || getSpanKind(tags) === 'RETRIEVER') {
     return false;
   }
   if (tags.some(
@@ -872,6 +872,8 @@ const OTEL_OPERATION_TO_KIND: Record<string, string> = {
   // TOOL
   execute_tool: 'TOOL',
   tool_call: 'TOOL',
+  // RETRIEVER
+  retrieval: 'RETRIEVER',
   // EMBEDDING
   embeddings: 'EMBEDDING',
   create_embeddings: 'EMBEDDING',

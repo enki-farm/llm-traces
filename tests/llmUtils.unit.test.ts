@@ -124,6 +124,20 @@ describe('extractLlmSpanData — OTel GenAI CHAIN span (invoke_agent) is NOT isL
   assertEquals(result.spanKind, 'AGENT', 'spanKind = AGENT from operation name');
 });
 
+describe('extractLlmSpanData — model-bearing retrieval is a RETRIEVER, not an LLM', () => {
+  const tags: KeyValuePair[] = [
+    kv('gen_ai.operation.name', 'retrieval'),
+    kv('gen_ai.request.model', 'text-embedding-3-small'),
+    kv('gen_ai.retrieval.query.text', 'hotel amenities'),
+  ];
+
+  const result = extractLlmSpanData(tags, []);
+  assertEquals(result.convention, 'otel-genai', 'retrieval uses OTel GenAI convention');
+  assertEquals(result.spanKind, 'RETRIEVER', 'retrieval maps to RETRIEVER');
+  assertEquals(result.isLlm, false, 'retrieval with a model is not routed to the chat detail');
+  assertEquals(isLlmSpan(tags), false, 'retrieval with a model is not counted as an LLM span');
+});
+
 describe('extractLlmSpanData — OTel GenAI with tool_calls in output', () => {
   const toolCallsJson = JSON.stringify([
     { role: 'assistant', parts: [{ type: 'tool_call', name: 'search', arguments: { q: 'hotels' }, id: 'call_abc' }] }

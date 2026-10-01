@@ -95,6 +95,40 @@ export const TRACE_RESPONSE = {
               ],
               events: [],
             },
+            // RETRIEVER spans — JSON documents and indexed document attributes
+            {
+              traceId: TRACE_ID,
+              spanId: 'span0012',
+              parentSpanId: 'span0001',
+              name: 'retrieval hotel-index',
+              startTimeUnixNano: t(510),
+              endTimeUnixNano: t(650),
+              attributes: [
+                { key: 'gen_ai.operation.name', value: { stringValue: 'retrieval' } },
+                { key: 'gen_ai.request.model', value: { stringValue: 'text-embedding-3-small' } },
+                { key: 'gen_ai.data_source.id', value: { stringValue: 'hotel-index' } },
+                { key: 'gen_ai.retrieval.query.text', value: { stringValue: 'hotel amenities' } },
+                { key: 'gen_ai.retrieval.top_k', value: { intValue: '2' } },
+                { key: 'gen_ai.usage.embedding_tokens', value: { intValue: '1234' } },
+                { key: 'gen_ai.retrieval.documents', value: { stringValue: '[{"id":"hotel-12345","content":"Pool and spa"}]' } },
+              ],
+              events: [],
+            },
+            {
+              traceId: TRACE_ID,
+              spanId: 'span0013',
+              parentSpanId: 'span0001',
+              name: 'retrieval faq-index',
+              startTimeUnixNano: t(660),
+              endTimeUnixNano: t(710),
+              attributes: [
+                { key: 'gen_ai.operation.name', value: { stringValue: 'retrieval' } },
+                { key: 'gen_ai.retrieval.query.text', value: { stringValue: 'hotel policies' } },
+                { key: 'retrieval.documents.0.document.id', value: { stringValue: 'faq-1' } },
+                { key: 'retrieval.documents.0.document.content', value: { stringValue: 'Check-in starts at 3 PM' } },
+              ],
+              events: [],
+            },
             // Non-AI HTTP span — no gen_ai attributes, for testing AI Only filter
             {
               traceId: TRACE_ID,

@@ -8,6 +8,11 @@ export const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(1.5),
     padding: theme.spacing(1.5),
   }),
+  sectionStack: css({
+    display: 'flex',
+    flexDirection: 'column',
+    gap: theme.spacing(1.5),
+  }),
   headerRow: css({
     display: 'flex',
     alignItems: 'center',
@@ -168,26 +173,40 @@ export const getStyles = (theme: GrafanaTheme2) => ({
     fontFamily: theme.typography.fontFamilyMonospace,
     fontWeight: theme.typography.fontWeightMedium,
   }),
-  toolCallBlock: css({
-    marginTop: theme.spacing(1),
+  toolMetaRow: css({
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: `${theme.spacing(1)} ${theme.spacing(2)}`,
+    marginBottom: theme.spacing(1),
+    paddingBottom: theme.spacing(1),
+    borderBottom: `1px solid ${theme.colors.border.weak}`,
+  }),
+  toolMetaItem: css({
+    display: 'flex',
+    gap: theme.spacing(0.5),
+    fontSize: theme.typography.bodySmall.fontSize,
+  }),
+  toolMetaKey: css({
+    color: theme.colors.text.secondary,
+    fontWeight: theme.typography.fontWeightMedium,
+  }),
+  toolMetaValue: css({
+    fontFamily: theme.typography.fontFamilyMonospace,
+    color: theme.colors.text.primary,
+  }),
+  toolCardBlock: css({
     padding: theme.spacing(1),
     background: theme.colors.background.secondary,
     borderRadius: theme.shape.radius.default,
     border: `1px solid ${theme.colors.border.weak}`,
-  }),
-  toolCallName: css({
-    fontWeight: theme.typography.fontWeightMedium,
-    fontSize: theme.typography.bodySmall.fontSize,
-    marginBottom: theme.spacing(0.5),
-    color: theme.colors.text.link,
-    fontFamily: theme.typography.fontFamilyMonospace,
-  }),
-  toolCallArgs: css({
     fontFamily: theme.typography.fontFamilyMonospace,
     fontSize: theme.typography.bodySmall.fontSize,
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
-    color: theme.colors.text.secondary,
+    lineHeight: 1.65,
+    color: theme.colors.text.primary,
+    maxHeight: '400px',
+    overflow: 'auto',
   }),
   emptyContent: css({
     color: theme.colors.text.disabled,

@@ -895,7 +895,7 @@ def inject_recommendation_agent(tracer):
 def start_retrieval_span(
     tracer,
     *,
-    vector_store,
+    data_source_id,
     model,
     query,
     top_k,
@@ -907,13 +907,13 @@ def start_retrieval_span(
     """
 
     span = tracer.start_span(
-        f"retrieve {vector_store}",
+        f"retrieval {data_source_id}",
         kind=SpanKind.CLIENT,
     )
 
     span.set_attribute(
         "gen_ai.operation.name",
-        "retrieve",
+        "retrieval",
     )
 
     span.set_attribute(
@@ -922,23 +922,23 @@ def start_retrieval_span(
     )
 
     span.set_attribute(
-        "gen_ai.vector_store.name",
-        vector_store,
+        "gen_ai.data_source.id",
+        data_source_id,
     )
 
     span.set_attribute(
-        "gen_ai.vector_store.query",
-        json_attr(query),
+        "gen_ai.retrieval.query.text",
+        query,
     )
 
     span.set_attribute(
-        "gen_ai.vector_store.top_k",
+        "gen_ai.retrieval.top_k",
         top_k,
     )
 
     if retrieved_documents:
         span.set_attribute(
-            "gen_ai.vector_store.documents",
+            "gen_ai.retrieval.documents",
             json_attr(retrieved_documents),
         )
 
@@ -958,7 +958,7 @@ def start_retrieval_span(
 def start_kb_lookup_span(
     tracer,
     *,
-    kb_name,
+    data_source_id,
     query,
     results,
 ):
@@ -967,27 +967,27 @@ def start_kb_lookup_span(
     """
 
     span = tracer.start_span(
-        f"kb_lookup {kb_name}",
+        f"retrieval {data_source_id}",
         kind=SpanKind.CLIENT,
     )
 
     span.set_attribute(
         "gen_ai.operation.name",
-        "retrieve",
+        "retrieval",
     )
 
     span.set_attribute(
-        "gen_ai.knowledge_base.name",
-        kb_name,
+        "gen_ai.data_source.id",
+        data_source_id,
     )
 
     span.set_attribute(
-        "gen_ai.knowledge_base.query",
-        json_attr(query),
+        "gen_ai.retrieval.query.text",
+        query,
     )
 
     span.set_attribute(
-        "gen_ai.knowledge_base.results",
+        "gen_ai.retrieval.documents",
         json_attr(results),
     )
 
@@ -1163,7 +1163,7 @@ def inject_rag_support_agent(tracer):
 
         retrieve1 = start_retrieval_span(
             tracer,
-            vector_store="faiss-index",
+            data_source_id="faiss-index",
             model="text-embedding-3-small",
             query="shipping delivery return policy",
             top_k=3,
@@ -1188,7 +1188,7 @@ def inject_rag_support_agent(tracer):
         # Also do a KB lookup for internal docs
         kb1 = start_kb_lookup_span(
             tracer,
-            kb_name="company-faq",
+            data_source_id="company-faq",
             query="shipping delivery return policy",
             results=[
                 {
@@ -1383,7 +1383,7 @@ def inject_rag_support_agent(tracer):
 
         retrieve2 = start_retrieval_span(
             tracer,
-            vector_store="faiss-index",
+            data_source_id="faiss-index",
             model="text-embedding-3-small",
             query="order ORD-98765 status tracking",
             top_k=1,
@@ -1873,7 +1873,7 @@ def inject_multi_tool_agent(tracer):
 
         retrieve_cancel = start_retrieval_span(
             tracer,
-            vector_store="faiss-index",
+            data_source_id="faiss-index",
             model="text-embedding-3-small",
             query="cancellation policy refund",
             top_k=2,

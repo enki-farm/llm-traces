@@ -95,10 +95,6 @@ function getConventionLabel(convention: string): string {
   }
 }
 
-function formatJson(value: string): string {
-  try { return JSON.stringify(JSON.parse(value), null, 2); } catch { return value; }
-}
-
 function FinishReasonBadge({ reason }: { reason: string }) {
   const styles = useStyles2(getStyles);
   const r = reason.toUpperCase();
@@ -198,16 +194,6 @@ function MessageBlock({ message, defaultOpen = true }: { message: LlmMessage; de
                   {message.content.split(/\s+/).filter(Boolean).length} words · {message.content.length} chars
                   {countTokens && ` · ~${countTokens(message.content).toLocaleString()} tokens`}
                 </div>
-              )}
-              {message.toolCalls && message.toolCalls.length > 0 && (
-                <>
-                  {message.toolCalls.map((tc, i) => (
-                    <div key={i} className={styles.toolCallBlock}>
-                      <div className={styles.toolCallName}>⚙ {tc.name}{tc.id ? ` · ${tc.id}` : ''}</div>
-                      <div className={styles.toolCallArgs}>{formatJson(tc.arguments)}</div>
-                    </div>
-                  ))}
-                </>
               )}
             </div>
           )}
@@ -361,6 +347,11 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
   // OTel GenAI attributes for RETRIEVER spans
   const retrievalQuery = getAttrValue(tags, 'gen_ai.retrieval.query.text');
   const retrievalDocs = kind === 'RETRIEVER' ? extractRetrievalDocuments(tags) : [];
+  const retrievalDocuments = getAttrValue(tags, 'gen_ai.retrieval.documents');
+  const retrievalTopK = getAttrValue(tags, 'gen_ai.retrieval.top_k');
+  const embeddingTokens = getAttrValue(tags, 'gen_ai.usage.embedding_tokens');
+  const dataSourceId = getAttrValue(tags, 'gen_ai.data_source.id');
+  const retrievalModel = getAttrValue(tags, 'gen_ai.request.model');
 
   // OTel GenAI attributes for RERANKER spans (custom attributes, not in OTel spec yet)
   const rerankerQuery = getAttrValue(tags, 'gen_ai.reranker.query');
@@ -386,10 +377,18 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
   // Generic input/output for CHAIN, AGENT, EMBEDDING, UNKNOWN spans
   const inputValue = getAttrValue(tags, 'gen_ai.input.messages') || getAttrValue(tags, 'input.value');
   const outputValue = getAttrValue(tags, 'gen_ai.output.messages') || getAttrValue(tags, 'output.value');
+  const retrievalInput = retrievalQuery ? JSON.stringify({ query: retrievalQuery }) : inputValue;
+  const retrievalOutput = retrievalDocuments || (retrievalDocs.length > 0 ? JSON.stringify(retrievalDocs) : outputValue);
 
   return (
     <div className={styles.container} data-testid="genai-span-detail">
       <div className={styles.headerRow}>
+        {kind === 'RETRIEVER' && retrievalModel && (
+          <div className={styles.modelBadge}>
+            <Icon name="ai-sparkle" className={styles.modelIcon} />
+            <span data-testid="retriever-model-name">{retrievalModel}</span>
+          </div>
+        )}
         <span className={styles.kindBadge} style={{ background: kindColor }} data-testid="genai-span-kind">
           {kind}
         </span>
@@ -397,12 +396,59 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
       </div>
 
       {kind === 'TOOL' && (toolName || toolDesc || toolCallArgs || toolCallResult) && (
-        <CollapsibleSection title="Tool" testId="tool-section">
-          {toolName && <ValueBlock label="Tool Name" value={toolName} />}
-          {toolDesc && <ValueBlock label="Description" value={toolDesc} />}
-          {toolCallArgs && <ValueBlock label="Call Arguments" value={toolCallArgs} />}
-          {toolCallResult && <ValueBlock label="Call Result" value={toolCallResult} />}
-        </CollapsibleSection>
+        <div data-testid="tool-section">
+          {/* Tool metadata row */}
+          {(toolName || toolDesc) && (
+            <div className={styles.toolMetaRow}>
+              {toolName && (
+                <div className={styles.toolMetaItem}>
+                  <span className={styles.toolMetaKey}>Tool:</span>
+                  <span className={styles.toolMetaValue}>{toolName}</span>
+                </div>
+              )}
+              {toolDesc && (
+                <div className={styles.toolMetaItem}>
+                  <span className={styles.toolMetaKey}>Description:</span>
+                  <span className={styles.toolMetaValue}>{toolDesc}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {/* Input card — call arguments */}
+          {toolCallArgs && (
+            <CollapsibleSection
+              title="Input"
+              testId="tool-input-section"
+              titleExtra={
+                <CopyButton
+                  text={toolCallArgs}
+                  label="input"
+                />
+              }
+            >
+              <div className={styles.toolCardBlock}>
+                {formatValue(toolCallArgs)}
+              </div>
+            </CollapsibleSection>
+          )}
+          {/* Output card — call result */}
+          {toolCallResult && (
+            <CollapsibleSection
+              title="Output"
+              testId="tool-output-section"
+              titleExtra={
+                <CopyButton
+                  text={toolCallResult}
+                  label="output"
+                />
+              }
+            >
+              <div className={styles.toolCardBlock}>
+                {formatValue(toolCallResult)}
+              </div>
+            </CollapsibleSection>
+          )}
+        </div>
       )}
 
       {kind === 'RERANKER' && (rerankerQuery || rerankerModel || rerankerResults.length > 0 || inputValue || outputValue) && (
@@ -427,24 +473,62 @@ function GenAiSpanDetail({ tags, spanKind }: { tags: KeyValuePair[]; spanKind: s
         </CollapsibleSection>
       )}
 
-      {kind === 'RETRIEVER' && (retrievalQuery || retrievalDocs.length > 0) && (
-        <CollapsibleSection title="Retrieval" testId="retriever-section">
-          {retrievalQuery && <ValueBlock label="Query" value={retrievalQuery} />}
-          {retrievalDocs.length > 0 && (
-            <div className={styles.fieldBlock}>
-              <div className={styles.fieldLabel}>Documents ({retrievalDocs.length})</div>
-              {retrievalDocs.map((doc) => (
-                <div key={doc.index} className={styles.documentBlock}>
-                  <div className={styles.documentMeta}>
-                    #{doc.index}{doc.id ? ` · id: ${doc.id}` : ''}{doc.score !== undefined ? ` · score: ${doc.score}` : ''}
-                  </div>
-                  {doc.content && <div className={styles.valueBlock}>{doc.content}</div>}
-                  {doc.metadata && <div className={styles.valueBlock}>{formatValue(doc.metadata)}</div>}
-                </div>
-              ))}
+      {kind === 'RETRIEVER' && (retrievalInput || retrievalOutput || dataSourceId || retrievalTopK || embeddingTokens) && (
+        <div className={styles.sectionStack} data-testid="retriever-section">
+          {/* Retrieval metadata row */}
+          {dataSourceId && (
+            <div className={styles.toolMetaRow} data-testid="retriever-meta-row">
+              <div className={styles.toolMetaItem}>
+                <span className={styles.toolMetaKey}>Data Source:</span>
+                <span className={styles.toolMetaValue}>{dataSourceId}</span>
+              </div>
             </div>
           )}
-        </CollapsibleSection>
+          {(retrievalTopK || embeddingTokens) && (
+            <CollapsibleSection title="Parameters & Token Usage" testId="retriever-params-section">
+              {embeddingTokens && (
+                <div className={styles.tokenRow}>
+                  <div className={styles.tokenItem}>
+                    <span className={styles.tokenLabel}>Embedding Tokens:</span>
+                    <span className={styles.tokenValue}>{Number(embeddingTokens).toLocaleString()}</span>
+                  </div>
+                </div>
+              )}
+              {retrievalTopK && <InvocationParamsDisplay params={{ top_k: retrievalTopK }} />}
+            </CollapsibleSection>
+          )}
+          {/* Input card — retrieval query */}
+          {retrievalInput && (
+            <CollapsibleSection
+              title="Input"
+              testId="retriever-input-section"
+              titleExtra={
+                <CopyButton
+                  text={formatValue(retrievalInput)}
+                  label="input"
+                />
+              }
+            >
+              <div className={styles.toolCardBlock}>
+                {formatValue(retrievalInput)}
+              </div>
+            </CollapsibleSection>
+          )}
+          {/* Output card — retrieved documents */}
+          {retrievalOutput && (
+            <CollapsibleSection
+              title="Output"
+              testId="retriever-output-section"
+              titleExtra={
+                <CopyButton text={formatValue(retrievalOutput)} label="output" />
+              }
+            >
+              <div className={styles.toolCardBlock}>
+                {formatValue(retrievalOutput)}
+              </div>
+            </CollapsibleSection>
+          )}
+        </div>
       )}
 
       {(kind === 'CHAIN' || kind === 'AGENT' || kind === 'EMBEDDING' || kind === 'UNKNOWN') && (inputValue || outputValue) && (
@@ -549,6 +633,13 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
         </CollapsibleSection>
       ) : null}
 
+      {(hasTokenUsage || hasParams) && (
+        <CollapsibleSection title="Parameters & Token Usage" defaultOpen={true} testId="params-section">
+          {hasTokenUsage && <TokenUsageDisplay usage={llmData.tokenUsage} model={llmData.model} precomputedCostUsd={llmData.precomputedCostUsd} />}
+          {hasParams && <InvocationParamsDisplay params={llmData.invocationParams} />}
+        </CollapsibleSection>
+      )}
+
       {/* System instructions (OTel GenAI structured format) */}
       {llmData.systemInstructions && llmData.systemInstructions.length > 0 ? (
         <CollapsibleSection title="System Instructions" testId="system-instructions-section">
@@ -601,12 +692,6 @@ export function LlmSpanDetail({ tags, logs, operationName }: LlmSpanDetailProps)
         </CollapsibleSection>
       )}
 
-      {(hasTokenUsage || hasParams) && (
-        <CollapsibleSection title="Parameters & Token Usage" defaultOpen={true} testId="params-section">
-          {hasTokenUsage && <TokenUsageDisplay usage={llmData.tokenUsage} model={llmData.model} precomputedCostUsd={llmData.precomputedCostUsd} />}
-          {hasParams && <InvocationParamsDisplay params={llmData.invocationParams} />}
-        </CollapsibleSection>
-      )}
     </div>
   );
 }
