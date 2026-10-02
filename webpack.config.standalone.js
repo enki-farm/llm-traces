@@ -21,6 +21,8 @@ module.exports = (env = {}) => ({
   externals: [
     'lodash',
     'react',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
     'react-dom',
     '@emotion/css',
     '@grafana/data',

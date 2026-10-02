@@ -19,6 +19,8 @@ export default (env: Record<string, boolean> = {}) => ({
   externals: [
     'lodash',
     'react',
+    'react/jsx-runtime',
+    'react/jsx-dev-runtime',
     'react-dom',
     '@emotion/css',
     '@grafana/data',
