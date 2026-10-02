@@ -18,8 +18,8 @@
     "screenshots": [
       { "name": "LLM Traces", "path": "img/llm-traces-screenshot.png" }
     ],
-    "version": "0.0.1",
-    "updated": "2026-10-01"
+    "version": "0.0.2",
+    "updated": "2026-10-02"
   },
   "includes": [
     {
