@@ -1,7 +1,7 @@
 # LLM Traces — Grafana Plugin
 
 [![CI](https://github.com/enki-farm/llm-traces/actions/workflows/ci.yml/badge.svg)](https://github.com/enki-farm/llm-traces/actions/workflows/ci.yml)
-[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/enki-farm/llm-traces/blob/main/LICENSE)
 
 A Grafana app plugin for visualizing LLM (Large Language Model) traces stored in [Grafana Tempo](https://grafana.com/oss/tempo/).
 
@@ -73,7 +73,7 @@ python3 -m pip install -r requirements.txt
 python3 scripts/inject_otel_ai_traces.py
 ```
 
-The injector sends OTLP/HTTP to `localhost:4318/v1/traces`; it does not call any AI provider. Its six scenario groups cover agent planning and tools, Gemini recommendations, RAG with standalone embeddings, order management, a memory-store/workflow lifecycle, and streamed and background responses. Together they emit all 18 well-known operations in the checked-in [GenAI span conventions](docs/otel_genai_semantic_convention_spans.md), plus representative prompt, cache, multimodal, streaming, polling and error attributes. Message and memory content is synthetic opt-in demonstration data, not a production capture policy.
+The injector sends OTLP/HTTP to `localhost:4318/v1/traces`; it does not call any AI provider. Its six scenario groups cover agent planning and tools, Gemini recommendations, RAG with standalone embeddings, order management, a memory-store/workflow lifecycle, and streamed and background responses. Together they emit all 18 well-known operations in the checked-in [GenAI span conventions](https://github.com/enki-farm/llm-traces/blob/main/docs/otel_genai_semantic_convention_spans.md), plus representative prompt, cache, multimodal, streaming, polling and error attributes. Message and memory content is synthetic opt-in demonstration data, not a production capture policy.
 
 The span coverage and consistency checks run without Tempo:
 
@@ -123,6 +123,10 @@ node --experimental-strip-types tests/prism-traceql.unit.test.ts
 # Lint & typecheck
 npm run typecheck
 npm run lint
+
+# Validate plugin
+npx -y @grafana/plugin-validator@latest -sourceCodeUri https://github.com/enki-farm/llm-traces https://github.com/enki-farm/llm-traces/releases/download
+/<version>/llm-traces-app-<version>.zip
 ```
 
 > **Note:** Node.js >= 22.6 is required for the `--experimental-strip-types` flag used by the test runner and build scripts.
@@ -153,7 +157,7 @@ npm run e2e
 
 The Compose build copies `dist/` into the Grafana image, so rebuild the plugin and rerun Compose with `--build` after source changes. If Grafana is already running with the current build, just run `npm run e2e`. The tests use `http://localhost:3000` by default; set `GRAFANA_URL` to point at another instance. To run one spec, use `npx playwright test tests/llm-trace-explorer.spec.ts`. View failures in `playwright-report/`, and stop the local stack on the host with `docker compose -f docker/docker-compose.yml down`.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed contribution guidelines.
+See [CONTRIBUTING.md](https://github.com/enki-farm/llm-traces/blob/main/CONTRIBUTING.md) for detailed contribution guidelines.
 
 ## Origin and License
 
@@ -177,4 +181,4 @@ commercial support and services are offered separately and do not restrict
 the rights granted by the Apache License, Version 2.0.
 
 This project is licensed under the Apache License, Version 2.0.
-See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
+See [LICENSE](https://github.com/enki-farm/llm-traces/blob/main/LICENSE) and [NOTICE](https://github.com/enki-farm/llm-traces/blob/main/NOTICE) for details.

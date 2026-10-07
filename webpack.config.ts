@@ -3,7 +3,7 @@ import CopyWebpackPlugin from 'copy-webpack-plugin';
 
 export default (env: Record<string, boolean> = {}) => ({
   mode: env.production ? 'production' : 'development',
-  devtool: env.production ? false : 'source-map',
+  devtool: 'source-map',
 
   entry: { module: './module.tsx' },
 

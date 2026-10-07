@@ -1,5 +1,4 @@
 {
-  "apiVersion": "v1",
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
   "name": "LLM Traces",
@@ -37,7 +36,7 @@
     "plugins": [
       {
         "type": "datasource",
-        "id": "tempo",
+        "id": "grafana-tempo-datasource",
         "name": "Tempo",
         "version": ">=0.3.0"
       }

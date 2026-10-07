@@ -5,7 +5,7 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = (env = {}) => ({
   mode: env.production ? 'production' : 'development',
-  devtool: env.production ? false : 'source-map',
+  devtool: 'source-map',
 
   entry: { module: './module.tsx' },
 
