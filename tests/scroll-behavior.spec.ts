@@ -1,5 +1,5 @@
 /**
- * Comprehensive scroll-behaviour tests for the LLM Traces plugin.
+ * Comprehensive scroll-behaviour tests for the LLMTraces plugin.
  *
  * Covers every scenario discovered during the scroll implementation:
  *  1.  Layout: page scroll range = plugin toolbar height only
@@ -16,7 +16,7 @@
 
 import { test, expect, Page } from '@playwright/test';
 
-const PLUGIN_URL = '/a/llm-traces-app';
+const PLUGIN_URL = '/a/enki-llmtraces-app';
 
 // ─── fixtures ────────────────────────────────────────────────────────────────
 

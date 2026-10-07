@@ -1,8 +1,8 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "app",
-  "name": "LLM Traces",
-  "id": "llm-traces-app",
+  "name": "LLMTraces",
+  "id": "enki-llmtraces-app",
   "info": {
     "keywords": ["llm", "traces", "observability", "genai", "otel"],
     "description": "LLM trace visualization for OTel GenAI spans stored in Grafana Tempo",
@@ -15,7 +15,7 @@
     ],
     "logos": { "small": "img/logo.svg", "large": "img/logo.svg" },
     "screenshots": [
-      { "name": "LLM Traces", "path": "img/llm-traces-screenshot.png" }
+      { "name": "LLMTraces", "path": "img/llm-traces-screenshot.png" }
     ],
     "version": "0.0.2",
     "updated": "2026-10-02"
@@ -23,8 +23,8 @@
   "includes": [
     {
       "type": "page",
-      "name": "LLM Traces",
-      "path": "/a/llm-traces-app",
+      "name": "LLMTraces",
+      "path": "/a/enki-llmtraces-app",
       "role": "Viewer",
       "addToNav": true,
       "defaultNav": true,

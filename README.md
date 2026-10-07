@@ -1,4 +1,4 @@
-# LLM Traces — Grafana Plugin
+# LLMTraces — Grafana Plugin
 
 [![CI](https://github.com/enki-farm/llm-traces/actions/workflows/ci.yml/badge.svg)](https://github.com/enki-farm/llm-traces/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/enki-farm/llm-traces/blob/main/LICENSE)
@@ -22,7 +22,7 @@ Supports OpenTelemetry GenAI semantic conventions out of the box.
 - Trace timeline with span hierarchy visualization
 - Resizable detail panels
 
-<img src="docs/images/llm-traces-screenshot.png" alt="LLM Traces plugin showing trace list, span timeline with duration bars, and LLM span detail with input/output messages" width="100%">
+<img src="docs/images/llm-traces-screenshot.png" alt="LLMTraces plugin showing trace list, span timeline with duration bars, and LLM span detail with input/output messages" width="100%">
 
 ## Requirements
 
@@ -39,12 +39,12 @@ Supports OpenTelemetry GenAI semantic conventions out of the box.
 1. Download the latest release zip from the [Releases](https://github.com/enki-farm/llm-traces/releases) page
 2. Extract it into your Grafana plugins directory:
    ```bash
-   unzip llm-traces-app-*.zip -d /var/lib/grafana/plugins/
+   unzip enki-llmtraces-app-*.zip -d /var/lib/grafana/plugins/
    ```
 3. Add the plugin to Grafana's allow list (required for unsigned community plugins):
    ```ini
    [plugins]
-   allow_loading_unsigned_plugins = llm-traces-app
+   allow_loading_unsigned_plugins = enki-llmtraces-app
    ```
 4. Restart Grafana
 
@@ -54,7 +54,7 @@ A ready-to-run stack with Grafana + Tempo is included for local development:
 
 ```bash
 # Build the plugin first
-npm install && npm run build:standalone
+npm install && npm run build
 
 # Start the stack (run from repo root)
 docker compose -f docker/docker-compose.yml up --build
@@ -89,14 +89,14 @@ To auto-enable the plugin (Grafana app plugins must be explicitly enabled):
 # /etc/grafana/provisioning/plugins/llm-traces.yaml
 apiVersion: 1
 apps:
-  - type: llm-traces-app
+   - type: enki-llmtraces-app
     org_id: 1
     disabled: false
 ```
 
 ## Usage
 
-1. Navigate to **LLM Traces** in the Grafana side menu
+1. Navigate to **LLMTraces** in the Grafana side menu
 2. Select a Tempo datasource
 3. Use the search bar or [TraceQL](https://grafana.com/docs/tempo/latest/traceql/) to find traces
 4. Click a trace to see the full span hierarchy
@@ -108,8 +108,9 @@ apps:
 # Install dependencies (also sets up pre-commit hook via Husky)
 npm install
 
-# Build (standalone — no Grafana monorepo needed)
-npm run build:standalone
+# Build with Grafana's plugin tooling
+npm run build
+# Creates dist/ and a validator-ready dist.zip at the repository root.
 
 # Run all unit tests
 npm test
@@ -125,8 +126,7 @@ npm run typecheck
 npm run lint
 
 # Validate plugin
-npx -y @grafana/plugin-validator@latest -sourceCodeUri https://github.com/enki-farm/llm-traces https://github.com/enki-farm/llm-traces/releases/download
-/<version>/llm-traces-app-<version>.zip
+npx -y @grafana/plugin-validator@latest -sourceCodeUri file://. dist.zip
 ```
 
 > **Note:** Node.js >= 22.6 is required for the `--experimental-strip-types` flag used by the test runner and build scripts.
@@ -139,7 +139,7 @@ In the devcontainer, install dependencies and build the plugin:
 
 ```bash
 npm ci
-npm run build:standalone
+npm run build
 ```
 
 On the Docker host, from the same repository directory, start Grafana with that build (the devcontainer does not install the Docker CLI):

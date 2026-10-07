@@ -1,4 +1,4 @@
-# Contributing to LLM Traces
+# Contributing to LLMTraces
 
 Thank you for your interest in contributing! This guide will help you get started.
 
@@ -19,11 +19,11 @@ npm install
 ## Building
 
 ```bash
-# Standalone build (recommended for contributors)
-npm run build:standalone
+# Production build
+npm run build
 
-# Watch mode (requires Grafana monorepo at ../grafana)
-npm run dev:host
+# Watch mode
+npm run dev
 ```
 
 ## Running Tests

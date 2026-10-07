@@ -15,7 +15,8 @@ RUN apt-get update \
         fonts-liberation \
         fonts-noto-color-emoji \
         fonts-unifont \
+        libatk-bridge2.0-0 \
+        libcups2 \
     && rm -rf /var/lib/apt/lists/*
 
 USER node
-RUN npx --yes playwright@1.50.1 install chromium

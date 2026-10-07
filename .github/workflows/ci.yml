@@ -39,12 +39,12 @@ jobs:
         run: npm test
 
       - name: Build
-        run: npm run build:standalone
+        run: npm run build
 
       - name: Verify plugin version match
         run: |
           PKG_VERSION=$(node -p "require('./package.json').version")
-          PLUGIN_VERSION=$(node -p "require('./plugin.json').info.version")
+          PLUGIN_VERSION=$(node -p "require('./src/plugin.json').info.version")
           if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ]; then
             echo "::error::Version mismatch: package.json=$PKG_VERSION plugin.json=$PLUGIN_VERSION"
             exit 1
@@ -85,9 +85,9 @@ jobs:
             -e GF_AUTH_ANONYMOUS_ENABLED=true \
             -e GF_AUTH_ANONYMOUS_ORG_ROLE=Admin \
             -e GF_DEFAULT_APP_MODE=development \
-            -e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=llm-traces-app \
+            -e GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=enki-llmtraces-app \
             grafana/grafana:13.2.2-slim
-          docker cp dist/. grafana:/var/lib/grafana/plugins/llm-traces-app/
+          docker cp dist/. grafana:/var/lib/grafana/plugins/enki-llmtraces-app/
           docker cp provisioning/plugins/. grafana:/etc/grafana/provisioning/plugins/
           docker cp provisioning/datasources/tempo.yaml grafana:/etc/grafana/provisioning/datasources/tempo.yaml
           docker restart grafana

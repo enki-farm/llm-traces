@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Report a bug in the LLM Traces plugin
+about: Report a bug in the LLMTraces plugin
 labels: bug
 ---
 

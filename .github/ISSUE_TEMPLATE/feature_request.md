@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest a feature for the LLM Traces plugin
+about: Suggest a feature for the LLMTraces plugin
 labels: enhancement
 ---
 

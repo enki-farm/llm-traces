@@ -1,7 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 import { SEARCH_RESPONSE, TRACE_RESPONSE, MEMORY_TRACE_RESPONSE, OTEL_GENAI_TRACE_RESPONSE } from './fixtures/llm-trace';
 
-const PLUGIN_URL = '/a/llm-traces-app';
+const PLUGIN_URL = '/a/enki-llmtraces-app';
 async function mockTempoApis(page: Page) {
   // Mock Tempo search — wildcard UID so tests work with any provisioned datasource
   await page.route('**/api/datasources/proxy/uid/**/api/search**', async (route) => {
@@ -23,7 +23,7 @@ test.describe('LLM Trace Explorer', () => {
 
   test('shows page title and toolbar', async ({ page }) => {
     // Scope to trace-explorer to avoid matching nav menu / breadcrumb
-    await expect(page.getByTestId('trace-explorer').getByText('LLM Traces', { exact: true })).toBeVisible();
+    await expect(page.getByTestId('trace-explorer').getByText('LLMTraces', { exact: true })).toBeVisible();
     await expect(page.getByTestId('trace-explorer').getByRole('button', { name: 'Search', exact: true })).toBeVisible();
   });
 

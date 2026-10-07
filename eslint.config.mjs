@@ -8,7 +8,6 @@ export default tseslint.config(
       'dist/',
       'node_modules/',
       'webpack.config.ts',
-      'webpack.config.standalone.js',
       'scripts/',
       'provisioning/',
       'tests/node-loader.mjs',

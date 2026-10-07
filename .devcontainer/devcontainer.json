@@ -13,7 +13,7 @@
 	// "forwardPorts": [],
 
 	// Use 'postCreateCommand' to run commands after the container is created.
-	// "postCreateCommand": "yarn install",
+	"postCreateCommand": "npm install && npx --yes playwright install chromium",
 
 	// Configure tool-specific properties.
 	// "customizations": {},

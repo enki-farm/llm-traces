@@ -14,7 +14,7 @@ import { test, expect, Page } from '@playwright/test';
 import * as fs from 'fs';
 import * as path from 'path';
 
-const PLUGIN_URL = '/a/llm-traces-app';
+const PLUGIN_URL = '/a/enki-llmtraces-app';
 const SCREENSHOT_DIR = '/tmp/qa-ux-screenshots';
 const LOAD_TIMEOUT = 25_000;
 

@@ -1,67 +1,46 @@
-import path from 'path';
+import type { Configuration } from 'webpack';
 import CopyWebpackPlugin from 'copy-webpack-plugin';
+import { mergeWithRules } from 'webpack-merge';
 
-export default (env: Record<string, boolean> = {}) => ({
-  mode: env.production ? 'production' : 'development',
-  devtool: 'source-map',
+import grafanaConfig, { type Env } from './.config/webpack/webpack.config.ts';
 
-  entry: { module: './module.tsx' },
+const config = async (env: Env): Promise<Configuration> => {
+  const baseConfig = await grafanaConfig(env);
 
-  output: {
-    clean: true,
-    filename: '[name].js',
-    path: path.resolve(__dirname, 'dist'),
-    libraryTarget: 'amd',
-    publicPath: 'public/plugins/llm-traces-app/',
-  },
-
-  // These are provided by Grafana at runtime via AMD — do NOT bundle them.
-  externals: [
-    'lodash',
-    'react',
-    'react/jsx-runtime',
-    'react/jsx-dev-runtime',
-    'react-dom',
-    '@emotion/css',
-    '@grafana/data',
-    '@grafana/runtime',
-    '@grafana/ui',
-    '@grafana/scenes',
-    /^@grafana\/.*/,
-    /^rxjs(\/.+)?$/,
-  ],
-
-  module: {
-    rules: [
-      {
-        test: /\.[tj]sx?$/,
-        exclude: /node_modules/,
-        use: {
-          loader: 'ts-loader',
-          options: {
-            transpileOnly: true,
-            configFile: 'tsconfig.standalone.json',
+  return mergeWithRules({
+    module: {
+      rules: {
+        test: 'match',
+        use: 'merge',
+      },
+    },
+  })(baseConfig, {
+    externals: ['@grafana/scenes'],
+    module: {
+      rules: [
+        {
+          test: /\.[tj]sx?$/,
+          use: {
+            loader: 'swc-loader',
+            options: {
+              jsc: {
+                transform: {
+                  react: {
+                    runtime: 'automatic',
+                  },
+                },
+              },
+            },
           },
         },
-      },
-      {
-        test: /\.css$/,
-        exclude: /node_modules/,
-        use: ['style-loader', 'css-loader'],
-      },
-    ],
-  },
-
-  resolve: {
-    extensions: ['.ts', '.tsx', '.js', '.jsx'],
-  },
-
-  plugins: [
-    new CopyWebpackPlugin({
-      patterns: [
-        { from: 'public', to: '.' },
-        { from: 'plugin.json', to: '.' },
       ],
-    }),
-  ],
-});
+    },
+    plugins: [
+      new CopyWebpackPlugin({
+        patterns: [{ from: '../NOTICE', to: '.' }],
+      }),
+    ],
+  });
+};
+
+export default config;

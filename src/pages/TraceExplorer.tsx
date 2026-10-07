@@ -316,7 +316,7 @@ export function TraceExplorer() {
         <div className={styles.toolbarTopRow}>
           <div className={styles.pageTitle}>
             <Icon name="ai-sparkle" />
-            LLM Traces
+            LLMTraces
           </div>
           <div className={styles.divider} />
           <div className={styles.dsSelect}>

@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
-            plugin.json
+            src/plugin.json
           sparse-checkout-cone-mode: false
 
       - uses: actions/download-artifact@v4
@@ -35,7 +35,7 @@ jobs:
 
       - name: Package plugin
         run: |
-          PLUGIN_ID=$(node -p "require('./plugin.json').id")
+          PLUGIN_ID=$(node -p "require('./src/plugin.json').id")
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p "${PLUGIN_ID}"
           cp -r dist/. "${PLUGIN_ID}/"

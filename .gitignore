@@ -338,3 +338,6 @@ playwright-report/*
 
 ## Exlude unittest results
 test-results/*
+
+## Generated validator archive
+dist.zip
