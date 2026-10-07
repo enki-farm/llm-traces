@@ -33,13 +33,6 @@
   ],
   "dependencies": {
     "grafanaDependency": ">=13.0.0",
-    "plugins": [
-      {
-        "type": "datasource",
-        "id": "grafana-tempo-datasource",
-        "name": "Tempo",
-        "version": ">=0.3.0"
-      }
-    ]
+    "plugins": []
   }
 }
